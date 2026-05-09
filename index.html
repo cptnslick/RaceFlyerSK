@@ -442,6 +442,9 @@ html,body{
 .sk-conn-btn.connect{background:var(--t600);color:#fff}
 .sk-conn-btn.connect:active{background:var(--t800)}
 .sk-conn-btn.disconnect{background:none;border:1px solid var(--color-border-secondary);color:var(--color-text-secondary)}
+.sk-scheme-btn{padding:9px 10px;border-radius:var(--border-radius-md);border:1px solid var(--color-border-secondary);background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans);white-space:nowrap;min-height:44px;letter-spacing:.3px;-webkit-tap-highlight-color:transparent}
+.sk-scheme-btn.wss{background:var(--t50);border-color:var(--t300);color:var(--t700)}
+.sk-https-warn{font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--border-radius-md);padding:8px 11px;margin-top:8px;line-height:1.5}
 .sk-live-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
 .sk-live-cell{text-align:center}
 .sk-live-val{font-size:18px;font-weight:600;color:var(--color-text-primary);line-height:1.2}
@@ -1066,12 +1069,17 @@ function updateSKStatusCard(){
   }
   html+='</div>';
   if(!skState.connected&&!skState.connecting){
-    var connVal=skState.host?(skState.scheme==='wss'?'wss://':'')+skState.host+(skState.port!==3000?':'+skState.port:''):'';
-    var connPh=(window.location.protocol==='https:'?'wss://':'')+'192.168.x.x:3000';
+    var connVal=skState.host?skState.host+':'+skState.port:'';
+    var isWss=skState.scheme==='wss';
+    var onHttps=window.location.protocol==='https:';
     html+='<div class="sk-conn-row">';
-    html+='<input class="sk-host-input" id="sk-host-input" type="text" inputmode="url" placeholder="'+connPh+'" value="'+connVal+'">';
+    html+='<button class="sk-scheme-btn'+(isWss?' wss':'')+'" id="sk-scheme-btn" onclick="toggleSKScheme()" title="Toggle ws/wss">'+(isWss?'WSS':'WS')+'</button>';
+    html+='<input class="sk-host-input" id="sk-host-input" type="text" inputmode="url" placeholder="192.168.x.x:3000" value="'+connVal+'">';
     html+='<button class="sk-conn-btn connect" onclick="skConnectFromInput()">Connect</button>';
     html+='</div>';
+    if(onHttps&&!isWss){
+      html+='<div class="sk-https-warn">⚠ This page is served over HTTPS — browsers block plain <strong>ws://</strong> connections. Switch to <strong>WSS</strong> if your SK server has TLS, or open this file locally via <strong>file://</strong> to use ws://.</div>';
+    }
   }
   if(skState.connected){
     var dirLbl=skState.windLabel==='AWS'?'AWA rel.':'Wind dir';
@@ -1087,19 +1095,21 @@ function updateSKStatusCard(){
   el.innerHTML=html;
 }
 
+function toggleSKScheme(){
+  skState.scheme=skState.scheme==='wss'?'ws':'wss';
+  localStorage.setItem('sk_scheme',skState.scheme);
+  updateSKStatusCard();
+}
+
 function skConnectFromInput(){
   var inp=document.getElementById('sk-host-input');
   if(!inp) return;
   var val=inp.value.trim();
   if(!val) return;
-  /* Detect and strip scheme prefix */
-  var scheme='ws';
-  val=val.replace(/^(wss|https):\/\//,function(){scheme='wss';return '';});
-  val=val.replace(/^(ws|http):\/\//,function(){return '';});
+  /* Strip any scheme prefix the user may have typed — scheme comes from the toggle */
+  val=val.replace(/^(wss?|https?):\/\//,'');
   /* Strip any trailing path */
   val=val.replace(/\/.*$/,'');
-  /* Auto-upgrade to wss when page is served over HTTPS */
-  if(window.location.protocol==='https:') scheme='wss';
   /* Split host:port — take last segment as port if numeric */
   var lastColon=val.lastIndexOf(':');
   var port=3000;
@@ -1110,7 +1120,7 @@ function skConnectFromInput(){
   }
   skState.host=host;
   skState.port=port;
-  skState.scheme=scheme;
+  /* Scheme stays as whatever the toggle is set to */
   connectSK();
 }
 
