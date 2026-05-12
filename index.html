@@ -617,35 +617,19 @@ html,body{
     </div>
   </div>
 
-  <!-- NPSA COURSES -->
+  <!-- COURSES -->
   <div id="tab-npsa" class="screen">
     <div class="npsa-header">
+    <div class="npsa-seg" style="margin-bottom:8px">
+      <button class="npsa-seg-btn" id="ncb-npsa" onclick="setNpsaClub('npsa')">NPSA</button>
+      <button class="npsa-seg-btn" id="ncb-rcra" onclick="setNpsaClub('rcra')">RCRA</button>
+    </div>
     <div class="npsa-seg" id="npsa-class-seg">
       <button class="npsa-seg-btn active" id="nsb-spin" onclick="setNpsaClass('spin')"><i class="ti ti-wind" aria-hidden="true"></i> Spinnaker</button>
       <button class="npsa-seg-btn" id="nsb-nspin" onclick="setNpsaClass('nspin')"><i class="ti ti-triangle" aria-hidden="true"></i> Non-Spin</button>
     </div>
     <select class="npsa-course-sel" id="npsa-course-sel" onchange="selectCourse(this.value)">
       <option value="">— Select a course —</option>
-      <option value="A">A &nbsp;· N wind · Windward-Leeward × 2</option>
-      <option value="B">B &nbsp;· N wind · Windward-Leeward</option>
-      <option value="C">C &nbsp;· N wind · Triangle</option>
-      <option value="D">D &nbsp;· N wind · Modified W-L</option>
-      <option value="E">E &nbsp;· N wind · Figure-8</option>
-      <option value="F">F &nbsp;· E wind · Craig Hill</option>
-      <option value="G">G &nbsp;· E wind · Offset triangle</option>
-      <option value="H">H &nbsp;· E wind · Reverse triangle</option>
-      <option value="I">I &nbsp;· SE wind · Diagonal</option>
-      <option value="J">J &nbsp;· SE wind · Diagonal × 2</option>
-      <option value="K">K &nbsp;· SE wind · Short</option>
-      <option value="L">L &nbsp;· S wind · Windward-Leeward × 2</option>
-      <option value="M">M &nbsp;· S wind · Offset loop</option>
-      <option value="N">N &nbsp;· S wind · Triangle</option>
-      <option value="O">O &nbsp;· S wind · Offset</option>
-      <option value="P">P &nbsp;· S wind · Long offset</option>
-      <option value="Q">Q &nbsp;· S wind · Short</option>
-      <option value="R">R &nbsp;· W wind · Triangle</option>
-      <option value="S">S &nbsp;· W wind · Long</option>
-      <option value="T">T &nbsp;· W wind · Short</option>
     </select>
     </div><!-- /.npsa-header -->
     <div id="npsa-marks-text"></div>
@@ -1805,6 +1789,97 @@ var COURSES={
     nspin:{marks:['START','BC14','PW6','FINISH'], rounds:[null,'S','P',null], dist:4.31}}
 };
 
+/* ── RCRA (Rock Creek Racing Association) data ────────────────── */
+var RCRA_MARKS={
+  'A': [39.1817,-76.4882], /* N39°10.902' W076°29.291' — YC "A" */
+  'B': [39.1686,-76.4951], /* N39°10.117' W076°29.706' — YC "B" */
+  'C': [39.1750,-76.4750], /* N39°10.500' W076°28.500' — YC "C" */
+  '1': [39.1702,-76.4297], /* N39°10.212' W076°25.779' — G "25" */
+  '2': [39.1803,-76.4451], /* N39°10.820' W076°26.706' — G "3"  */
+  '3': [39.1861,-76.4637], /* N39°11.165' W076°27.819' — G "7"  */
+  '4': [39.1917,-76.4820], /* N39°11.500' W076°28.921' — G "9"  */
+  '5': [39.1616,-76.4973], /* N39°09.697' W076°29.837' — R "2"  */
+  '6': [39.1948,-76.4937], /* N39°11.690' W076°29.621' — G "11" */
+  '7': [39.1808,-76.5048], /* N39°10.845' W076°30.289' — RN "2" */
+  '8': [39.2008,-76.5130], /* N39°12.050' W076°30.777' — G "1M" */
+  '9': [39.2117,-76.5247]  /* N39°12.700' W076°31.480' — G "3" (outer) */
+};
+var RCRA_MARK_NAMES={
+  'A':'YC "A"','B':'YC "B"','C':'YC "C"',
+  '1':'G "25"','2':'G "3"','3':'G "7"','4':'G "9"','5':'R "2"',
+  '6':'G "11"','7':'RN "2"','8':'G "1M"','9':'G "3" (outer)'
+};
+/* Rounding: P=port/red, S=stbd/green per RCRA standard course sheet */
+var RCRA_COURSES={
+  'A':{wind:'N',windDeg:0,desc:'Triangle + Beat',
+    nspin:{marks:['A','4','7','B','A'],rounds:[null,'P','S','P',null],dist:3.60},
+    spin: {marks:['A','4','8','B','A'],rounds:[null,'P','S','P',null],dist:5.15}},
+  'B':{wind:'NE',windDeg:45,desc:'Windward-Leeward',
+    nspin:{marks:['A','3','6','A'],  rounds:[null,'P','S',null],    dist:3.51},
+    spin: {marks:['A','3','8','7','A'],rounds:[null,'P','S','S',null],dist:5.69}},
+  'C':{wind:'E',windDeg:90,desc:'Beat & Run',
+    nspin:{marks:['A','2','A'],rounds:[null,'S',null],dist:4.02},
+    spin: {marks:['A','1','A'],rounds:[null,'S',null],dist:5.64}},
+  'D':{wind:'E',windDeg:90,desc:'Windward-Leeward',
+    nspin:{marks:['A','3','6','A'],rounds:[null,'P','S',null],dist:3.51},
+    spin: {marks:['A','3','8','A'],rounds:[null,'P','S',null],dist:5.28}},
+  'E':{wind:'SE',windDeg:135,desc:'Windward-Leeward',
+    nspin:{marks:['A','C','6','A'],rounds:[null,'P','S',null],dist:3.03},
+    spin: {marks:['A','C','8','A'],rounds:[null,'P','S',null],dist:4.71}},
+  'F':{wind:'S',windDeg:180,desc:'Windward-Leeward',
+    nspin:{marks:['A','B','4','A'],       rounds:[null,'P','S',null],    dist:3.00},
+    spin: {marks:['A','B','4','A','4','A'],rounds:[null,'P','S','P','S',null],dist:4.30}},
+  'G':{wind:'S',windDeg:180,desc:'Triangle',
+    nspin:{marks:['A','B','6','4','A'],rounds:[null,'P','S','S',null],dist:3.65},
+    spin: {marks:['A','B','6','3','A'],rounds:[null,'P','S','S',null],dist:5.11}},
+  'H':{wind:'W',windDeg:270,desc:'Windward-Leeward',
+    nspin:{marks:['A','7','3','A'],rounds:[null,'S','P',null],dist:3.91},
+    spin: {marks:['A','7','2','A'],rounds:[null,'S','P',null],dist:5.58}},
+  'I':{wind:'W',windDeg:270,desc:'Triangle',
+    nspin:{marks:['A','7','C','A'],    rounds:[null,'S','P',null],  dist:2.95},
+    spin: {marks:['A','7','C','3','A'],rounds:[null,'S','P','S',null],dist:4.24}},
+  'J':{wind:'NW',windDeg:315,desc:'Windward-Leeward',
+    nspin:{marks:['A','8','7','A'],rounds:[null,'S','P',null],dist:3.67},
+    spin: {marks:['A','9','A'],    rounds:[null,'S',null],    dist:4.94}},
+  'K':{wind:'NW',windDeg:315,desc:'Windward-Leeward',
+    nspin:{marks:['A','6','3','A'],rounds:[null,'S','P',null],dist:3.51},
+    spin: {marks:['A','6','2','A'],rounds:[null,'S','P',null],dist:5.27}}
+};
+
+var npsaClub=localStorage.getItem('npsa_club')||'npsa'; /* 'npsa' | 'rcra' */
+
+function getActiveMarks()    { return npsaClub==='rcra'?RCRA_MARKS:MARKS; }
+function getActiveMarkNames(){ return npsaClub==='rcra'?RCRA_MARK_NAMES:MARK_NAMES; }
+function getActiveCourses()  { return npsaClub==='rcra'?RCRA_COURSES:COURSES; }
+function getMarkFallback()   { return npsaClub==='rcra'?[39.190,-76.490]:[39.20083,-76.45898]; }
+
+function setNpsaClub(club){
+  npsaClub=club;
+  localStorage.setItem('npsa_club',club);
+  document.getElementById('ncb-npsa').classList.toggle('active',club==='npsa');
+  document.getElementById('ncb-rcra').classList.toggle('active',club==='rcra');
+  raceState.courseId='';raceState.legIdx=1;
+  populateCourseDropdown();
+  if(npsaLayerGroup) npsaLayerGroup.clearLayers();
+  document.getElementById('npsa-marks-text').innerHTML='';
+  document.getElementById('npsa-next-mark').innerHTML='';
+  if(npsaMap) npsaMap.setView(club==='rcra'?[39.190,-76.490]:[39.193,-76.458],12);
+  renderRaceTab();
+}
+
+function populateCourseDropdown(){
+  var sel=document.getElementById('npsa-course-sel');
+  if(!sel) return;
+  var courses=getActiveCourses();
+  var html='<option value="">— Select a course —</option>';
+  Object.keys(courses).forEach(function(id){
+    var c=courses[id];
+    html+='<option value="'+id+'">'+id+'  · '+c.wind+' wind · '+(c.desc||'')+'</option>';
+  });
+  sel.innerHTML=html;
+  if(raceState.courseId) sel.value=raceState.courseId;
+}
+
 var npsaMap=null;
 var npsaLayerGroup=null;
 var npsaBoatMarker=null;
@@ -1831,6 +1906,10 @@ function onShowNpsa(){
       npsaLayerGroup=L.layerGroup().addTo(npsaMap);
     }
     npsaMap.invalidateSize();
+    /* Sync club toggle active state and populate course dropdown */
+    document.getElementById('ncb-npsa').classList.toggle('active',npsaClub==='npsa');
+    document.getElementById('ncb-rcra').classList.toggle('active',npsaClub==='rcra');
+    populateCourseDropdown();
     /* Re-draw if a course is already selected */
     var sel=document.getElementById('npsa-course-sel');
     if(sel&&sel.value) selectCourse(sel.value);
@@ -1873,13 +1952,15 @@ function compassFull(deg){
 }
 
 function selectCourse(id,noFit){
-  if(!id||!COURSES[id]) {
+  var activeCourses=getActiveCourses();
+  var aMarks=getActiveMarks(), aNames=getActiveMarkNames();
+  if(!id||!activeCourses[id]) {
     document.getElementById('npsa-marks-text').innerHTML='';
     document.getElementById('npsa-next-mark').innerHTML='';
     return;
   }
   if(id!==raceState.courseId){raceState.courseId=id;raceState.legIdx=1;}
-  var course=COURSES[id];
+  var course=activeCourses[id];
   var variant=course[npsaClass];
   var marks=variant.marks;
   var rounds=variant.rounds;
@@ -1894,7 +1975,7 @@ function selectCourse(id,noFit){
   html+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;line-height:2">';
   marks.forEach(function(m,i){
     var r=rounds[i];
-    var name=MARK_NAMES[m]||m;
+    var name=aNames[m]||m;
     if(r===null){
       html+='<span class="npsa-mark-tag npsa-mark-start">'+name+'</span>';
     } else if(r==='P'){
@@ -1914,7 +1995,7 @@ function selectCourse(id,noFit){
   /* ── Clear old course layers ── */
   npsaLayerGroup.clearLayers();
 
-  var latlngs=marks.map(function(m){return MARKS[m]||MARKS['PW8'];});
+  var latlngs=marks.map(function(m){return aMarks[m]||getMarkFallback();});
   var bounds=L.latLngBounds(latlngs);
 
   /* ── Course lines with bearing/distance labels ── */
@@ -1944,9 +2025,9 @@ function selectCourse(id,noFit){
   var seenPos={};
   marks.forEach(function(m,i){
     var r=rounds[i];
-    var pos=MARKS[m]||MARKS['PW8'];
+    var pos=aMarks[m]||getMarkFallback();
     var posKey=pos[0].toFixed(5)+','+pos[1].toFixed(5);
-    var name=MARK_NAMES[m]||m;
+    var name=aNames[m]||m;
     if(r===null){
       if(seenPos[posKey]) return; /* don't double-draw start */
       seenPos[posKey]=true;
@@ -2203,8 +2284,9 @@ function renderWindHistory(){
 var raceState={courseId:'',legIdx:1};
 
 function getRaceVariant(){
-  if(!raceState.courseId||!COURSES[raceState.courseId]) return null;
-  return COURSES[raceState.courseId][npsaClass];
+  var c=getActiveCourses();
+  if(!raceState.courseId||!c[raceState.courseId]) return null;
+  return c[raceState.courseId][npsaClass];
 }
 
 function raceAdvanceLeg(delta){
@@ -2318,8 +2400,8 @@ function renderRaceTab(){
     var marks=v.marks,rounds=v.rounds;
     var idx=Math.min(raceState.legIdx,marks.length-1);
     var markId=marks[idx],rounding=rounds[idx];
-    var markName=MARK_NAMES[markId]||markId;
-    var markPos=MARKS[markId];
+    var markName=getActiveMarkNames()[markId]||markId;
+    var markPos=getActiveMarks()[markId];
 
     /* Leg nav */
     html+='<div class="card" style="margin-bottom:10px">';
@@ -2368,7 +2450,7 @@ function renderRaceTab(){
     /* Mini mark trail */
     html+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;line-height:2.2">';
     marks.forEach(function(m,i){
-      var r=rounds[i],nm=MARK_NAMES[m]||m,isCur=i===idx,isPast=i<idx;
+      var r=rounds[i],nm=getActiveMarkNames()[m]||m,isCur=i===idx,isPast=i<idx;
       var cls=r===null?'npsa-mark-start':r==='P'?'npsa-mark-port':'npsa-mark-stbd';
       html+='<span class="npsa-mark-tag '+cls+'" style="opacity:'+(isPast?'0.4':'1')+';'+(isCur?'outline:2px solid '+mkColor+';outline-offset:2px;':'')+'">'+nm+'</span>';
       if(i<marks.length-1) html+='<span style="color:var(--color-text-secondary);font-size:11px">→</span>';
@@ -2426,8 +2508,8 @@ function renderNpsaNextMark(){
   var marks=v.marks, rounds=v.rounds;
   var idx=Math.min(raceState.legIdx,marks.length-1);
   var markId=marks[idx], rounding=rounds[idx];
-  var markName=MARK_NAMES[markId]||markId;
-  var markPos=MARKS[markId];
+  var markName=getActiveMarkNames()[markId]||markId;
+  var markPos=getActiveMarks()[markId];
   var cog=skState.cogDeg;
   var mkColor=rounding===null?'var(--b800)':rounding==='P'?'#dc2626':'#16a34a';
   var mkBg=rounding===null?'var(--b50)':rounding==='P'?'#fee2e2':'#dcfce7';
