@@ -1,6 +1,6 @@
 # RaceFlyer SK
 
-A single-file PWA for sailboat racing aboard an Oyster SJ35, designed for use on the Chesapeake Bay with the North Potomac Sailing Association (NPSA) out of North Point.
+A single-file PWA for sailboat racing aboard an Oyster SJ35, designed for use on the Chesapeake Bay with the North Point Sailing Association (NPSA) out of North Point.
 
 All data, course geometry, and polar tables are self-contained in `index.html` — no build step, no server, no dependencies to install. Open the file in any modern browser.
 
