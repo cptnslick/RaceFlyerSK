@@ -639,6 +639,7 @@ html,body{
 
   <!-- RACE -->
   <div id="tab-race" class="screen">
+    <div id="race-timer-panel"></div>
     <div id="race-content"></div>
   </div>
 
@@ -760,7 +761,7 @@ function pushWindSample(kts){
   var now=Date.now();
   windAvgBuf.push({t:now,v:kts});
   /* Drop samples older than the window */
-  while(windAvgBuf.length>1&&windAvgBuf[0].t<now-WIND_AVG_WINDOW) windAvgBuf.shift();
+  while(windAvgBuf.length>0&&windAvgBuf[0].t<now-WIND_AVG_WINDOW) windAvgBuf.shift();
 }
 
 function windAvgKts(){
@@ -773,8 +774,9 @@ function windAvgKts(){
 function syncTrimToWind(){
   var w=windAvgKts();
   if(w==null) w=wxState.windKts;
-  if(!w) return;
+  if(w==null||isNaN(w)) return;
   var us=document.getElementById('up-slider');
+  if(!us) return;
   us.value=Math.min(32,Math.max(0,w));
   updateUpwind();
   var rs=document.getElementById('reach-slider');
@@ -818,10 +820,12 @@ var skState={
   sogKts:null, stwKts:null, heelDeg:null, depthFt:null,
   cogDeg:null,
   _speedTrue:null, _dirTrue:null, _speedApp:null, _angleApp:null,
+  windKtsTs:null, windDirTs:null,
   lat:null, lon:null,
   lastUpdate:null, weatherFiredOnce:false,
   skHelloReceived:false, reconnectCount:0, connectTimer:null
 };
+var SK_STALE_MS=30000;
 
 var RAD2DEG=180/Math.PI;
 var MS2KTS=1.94384;
@@ -976,10 +980,12 @@ function parseSKDelta(raw){
     });
   });
   /* Prefer true wind; fall back to computing it from apparent + COG via vector triangle */
+  var _now=Date.now();
   if(skState._speedTrue!=null&&skState._dirTrue!=null){
     skState.windKts=Math.round(skState._speedTrue*MS2KTS*10)/10;
     skState.windDir=Math.round(skState._dirTrue);
     skState.windLabel='TWS';
+    skState.windKtsTs=_now;skState.windDirTs=_now;
   } else if(skState._speedApp!=null&&skState._angleApp!=null){
     if(skState.cogDeg!=null&&skState.sogKts!=null){
       /* Vector triangle: True = Apparent + Boat velocity
@@ -993,13 +999,18 @@ function parseSKDelta(raw){
       /* Direction is meaningless when TWS ~= 0 (boat motion exactly cancels apparent) */
       skState.windDir=twsMs>0.05?Math.round((Math.atan2(tx,ty)*RAD2DEG+180+360)%360):null;
       skState.windLabel='cTWS'; /* computed from apparent */
+      skState.windKtsTs=_now;skState.windDirTs=skState.windDir!=null?_now:skState.windDirTs;
     } else {
       /* No COG — apparent angle is bow-relative, not a compass bearing */
       skState.windKts=Math.round(skState._speedApp*MS2KTS*10)/10;
       skState.windDir=null;
       skState.windLabel='AWS';
+      skState.windKtsTs=_now;
     }
   }
+  /* Staleness: drop values whose timestamp is older than SK_STALE_MS */
+  if(skState.windKtsTs!=null&&_now-skState.windKtsTs>SK_STALE_MS) skState.windKts=null;
+  if(skState.windDirTs!=null&&_now-skState.windDirTs>SK_STALE_MS) skState.windDir=null;
   skState.lastUpdate=Date.now();
   onSKData();
 }
@@ -1789,7 +1800,12 @@ var COURSES={
     nspin:{marks:['START','BC14','PW6','FINISH'], rounds:[null,'S','P',null], dist:4.31}}
 };
 
-/* ── RCRA (Rock Creek Racing Association) data ────────────────── */
+/* ── RCRA (Rock Creek Racing Association) data ──────────────────
+ * Source: RCRA course sheet image provided by user (2026-05).
+ * Marks and courses transcribed by hand — verify against current SIs
+ * before relying on these for live racing. Coords are in decimal
+ * degrees (N positive, W negative); the original image used DMS.
+ * ─────────────────────────────────────────────────────────────── */
 var RCRA_MARKS={
   'A': [39.1817,-76.4882], /* N39°10.902' W076°29.291' — YC "A" */
   'B': [39.1686,-76.4951], /* N39°10.117' W076°29.706' — YC "B" */
@@ -1854,16 +1870,23 @@ function getActiveCourses()  { return npsaClub==='rcra'?RCRA_COURSES:COURSES; }
 function getMarkFallback()   { return npsaClub==='rcra'?[39.190,-76.490]:[39.20083,-76.45898]; }
 
 function setNpsaClub(club){
+  /* Save current course under the OLD club key before switching */
+  if(raceState.courseId) localStorage.setItem('course_'+npsaClub,raceState.courseId);
   npsaClub=club;
   localStorage.setItem('npsa_club',club);
   var clubSel=document.getElementById('npsa-club-sel');
   if(clubSel) clubSel.value=club;
-  raceState.courseId='';raceState.legIdx=1;
+  /* Restore the previously-selected course for THIS club, if it still exists */
+  var savedCourse=localStorage.getItem('course_'+club);
+  var courses=getActiveCourses();
+  raceState.courseId=(savedCourse&&courses[savedCourse])?savedCourse:'';
+  raceState.legIdx=1;
   populateCourseDropdown();
   if(npsaLayerGroup) npsaLayerGroup.clearLayers();
   document.getElementById('npsa-marks-text').innerHTML='';
   document.getElementById('npsa-next-mark').innerHTML='';
   if(npsaMap) npsaMap.setView(club==='rcra'?[39.190,-76.490]:[39.193,-76.458],12);
+  if(raceState.courseId) selectCourse(raceState.courseId);
   renderRaceTab();
 }
 
@@ -1959,7 +1982,7 @@ function selectCourse(id,noFit){
     document.getElementById('npsa-next-mark').innerHTML='';
     return;
   }
-  if(id!==raceState.courseId){raceState.courseId=id;raceState.legIdx=1;}
+  if(id!==raceState.courseId){raceState.courseId=id;raceState.legIdx=1;localStorage.setItem('course_'+npsaClub,id);}
   var course=activeCourses[id];
   var variant=course[npsaClass];
   var marks=variant.marks;
@@ -2097,7 +2120,7 @@ function pushWindHistSample(){
   if(now-_lastWindHistTs<WIND_HIST_INTERVAL_MS) return;
   _lastWindHistTs=now;
   windHistBuf.push({t:now,dir:skState.windDir,kts:skState.windKts});
-  while(windHistBuf.length>1&&windHistBuf[0].t<now-WIND_HIST_MAX_MS) windHistBuf.shift();
+  while(windHistBuf.length>0&&windHistBuf[0].t<now-WIND_HIST_MAX_MS) windHistBuf.shift();
 }
 
 function _unwrapDirs(dirs){
@@ -2284,12 +2307,17 @@ function renderWindHistory(){
 var raceState={courseId:'',legIdx:1};
 
 /* ── Start timer ─────────────────────────────── */
-var timerState={running:false,endEpoch:null,durationMs:5*60*1000,soundOn:true,_iv:null,_beeped:{}};
+var timerState={running:false,endEpoch:null,durationMs:5*60*1000,soundOn:true,_iv:null,_beeped:{},_initialK:null};
 
 function _timerACtx(){
   if(!window._timerAudio) window._timerAudio=new(window.AudioContext||window.webkitAudioContext)();
   return window._timerAudio;
 }
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&window._timerAudio&&window._timerAudio.state==='suspended'){
+    try{window._timerAudio.resume();}catch(e){}
+  }
+});
 function _timerHorn(dur,vol){
   try{
     var ctx=_timerACtx(),t=ctx.currentTime;
@@ -2321,7 +2349,8 @@ function timerTick(){
     disp.style.color=sec<=10?'var(--c400)':sec<=60?'#f59e0b':'';
   }
   var k=Math.ceil(sec);
-  if(!timerState._beeped[k]){
+  /* Suppress the initial second's beep (otherwise pressing Start at 5:00 fires the minute-mark horn immediately) */
+  if(!timerState._beeped[k]&&k!==timerState._initialK){
     timerState._beeped[k]=true;
     if(k===0)        _timerPattern([{d:1.2,t:0},{d:1.2,t:1400},{d:2.5,t:2800}]);
     else if(k<=10)   _timerPattern([{d:0.18}]);
@@ -2346,6 +2375,7 @@ function timerStart(){
   timerState.running=true;
   timerState.endEpoch=Date.now()+timerState.durationMs;
   timerState._beeped={};
+  timerState._initialK=Math.ceil(timerState.durationMs/1000);
   timerState._iv=setInterval(timerTick,250);
   timerTick();
   var rb=document.getElementById('race-timer-btn');
@@ -2378,6 +2408,32 @@ function timerToggleSound(){
   if(btn) btn.innerHTML='<i class="ti ti-'+(timerState.soundOn?'volume':'volume-off')+'" aria-hidden="true"></i>';
 }
 
+function renderRaceTimerPanel(){
+  var el=document.getElementById('race-timer-panel');
+  if(!el||el.dataset.built==='1') return; /* Build once; tick patches in-place */
+  var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):timerState.durationMs/1000;
+  var m=Math.floor(sec/60),s=Math.floor(sec%60);
+  var str=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+  var clr=sec<=10?'color:var(--c400)':sec<=60?'color:#f59e0b':'';
+  var d5=timerState.durationMs===5*60000,d10=timerState.durationMs===10*60000;
+  var h='<div class="card" style="margin-bottom:14px;padding:14px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+  h+='<span class="sec-lbl" style="margin:0">Start timer</span>';
+  h+='<div style="display:flex;gap:5px;align-items:center">';
+  h+='<button class="timer-preset" data-ms="'+(5*60000)+'" onclick="timerSetDuration(5*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(d5?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(d5?'var(--t600)':'none')+';color:'+(d5?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">5m</button>';
+  h+='<button class="timer-preset" data-ms="'+(10*60000)+'" onclick="timerSetDuration(10*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(d10?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(d10?'var(--t600)':'none')+';color:'+(d10?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">10m</button>';
+  h+='<button id="race-timer-sound" onclick="timerToggleSound()" style="padding:3px 7px;border:1px solid var(--color-border-secondary);border-radius:6px;background:none;color:var(--color-text-secondary);cursor:pointer;font-size:15px;line-height:1.4;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent"><i class="ti ti-'+(timerState.soundOn?'volume':'volume-off')+'" aria-hidden="true"></i></button>';
+  h+='</div></div>';
+  h+='<div id="race-timer-disp" style="font-size:60px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:3px;text-align:center;margin:4px 0 12px;'+clr+'">'+str+'</div>';
+  h+='<div style="display:flex;gap:8px">';
+  h+='<button id="race-timer-btn" onclick="timerStart()" style="flex:1;padding:10px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:'+(timerState.running?'var(--c400)':'none')+';color:'+(timerState.running?'#fff':'var(--color-text-primary)')+';font-size:14px;font-weight:500;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent">';
+  h+=(timerState.running?'<i class="ti ti-player-pause" aria-hidden="true"></i> Stop':'<i class="ti ti-player-play" aria-hidden="true"></i> Start')+'</button>';
+  h+='<button onclick="timerReset()" style="padding:10px 18px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button>';
+  h+='</div></div>';
+  el.innerHTML=h;
+  el.dataset.built='1';
+}
+
 function getRaceVariant(){
   var c=getActiveCourses();
   if(!raceState.courseId||!c[raceState.courseId]) return null;
@@ -2396,27 +2452,7 @@ function renderRaceTab(){
   var el=document.getElementById('race-content');
   if(!el) return;
   var html='';
-
-  /* ── Start timer panel ── */
-  var _tsec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):timerState.durationMs/1000;
-  var _tm=Math.floor(_tsec/60),_ts=Math.floor(_tsec%60);
-  var _tstr=(_tm<10?'0':'')+_tm+':'+(_ts<10?'0':'')+_ts;
-  var _tclr=_tsec<=10?'color:var(--c400)':_tsec<=60?'color:#f59e0b':'';
-  var _d5=timerState.durationMs===5*60000,_d10=timerState.durationMs===10*60000;
-  html+='<div class="card" style="margin-bottom:14px;padding:14px">';
-  html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-  html+='<span class="sec-lbl" style="margin:0">Start timer</span>';
-  html+='<div style="display:flex;gap:5px;align-items:center">';
-  html+='<button class="timer-preset" data-ms="'+(5*60000)+'" onclick="timerSetDuration(5*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(_d5?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(_d5?'var(--t600)':'none')+';color:'+(_d5?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">5m</button>';
-  html+='<button class="timer-preset" data-ms="'+(10*60000)+'" onclick="timerSetDuration(10*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(_d10?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(_d10?'var(--t600)':'none')+';color:'+(_d10?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">10m</button>';
-  html+='<button id="race-timer-sound" onclick="timerToggleSound()" style="padding:3px 7px;border:1px solid var(--color-border-secondary);border-radius:6px;background:none;color:var(--color-text-secondary);cursor:pointer;font-size:15px;line-height:1.4;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent"><i class="ti ti-'+(timerState.soundOn?'volume':'volume-off')+'" aria-hidden="true"></i></button>';
-  html+='</div></div>';
-  html+='<div id="race-timer-disp" style="font-size:60px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:3px;text-align:center;margin:4px 0 12px;'+_tclr+'">'+_tstr+'</div>';
-  html+='<div style="display:flex;gap:8px">';
-  html+='<button id="race-timer-btn" onclick="timerStart()" style="flex:1;padding:10px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:'+(timerState.running?'var(--c400)':'none')+';color:'+(timerState.running?'#fff':'var(--color-text-primary)')+';font-size:14px;font-weight:500;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent">';
-  html+=(timerState.running?'<i class="ti ti-player-pause" aria-hidden="true"></i> Stop':'<i class="ti ti-player-play" aria-hidden="true"></i> Start')+'</button>';
-  html+='<button onclick="timerReset()" style="padding:10px 18px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button>';
-  html+='</div></div>';
+  renderRaceTimerPanel();
 
   /* ── Class toggle ── */
   html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
