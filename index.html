@@ -827,6 +827,41 @@ var skState={
 };
 var SK_STALE_MS=30000;
 
+/* ── Phone/tablet GPS fallback (used when SK has no position) ── */
+var phoneGPS={lat:null,lon:null,watcher:null,accuracy:null};
+
+function startPhoneGPS(){
+  if(phoneGPS.watcher!=null||!navigator.geolocation) return;
+  phoneGPS.watcher=navigator.geolocation.watchPosition(
+    function(pos){
+      phoneGPS.lat=pos.coords.latitude;
+      phoneGPS.lon=pos.coords.longitude;
+      phoneGPS.accuracy=pos.coords.accuracy;
+      /* Auto-fire weather once if SK has no position and weather not yet loaded */
+      if(skState.lat==null&&!skState.weatherFiredOnce&&!wxState.loaded&&!wxState.loading){
+        skState.weatherFiredOnce=true;
+        wxState.lat=phoneGPS.lat;
+        wxState.lon=phoneGPS.lon;
+        loadWeather();
+      }
+      /* Refresh course UI if SK has no position */
+      if(skState.lat==null){
+        updateNpsaBoatMarker();
+        renderNpsaNextMark();
+      }
+    },
+    function(err){
+      /* Permission denied — stop trying; other errors are transient, keep watching */
+      if(err.code===1){navigator.geolocation.clearWatch(phoneGPS.watcher);phoneGPS.watcher=null;}
+    },
+    {enableHighAccuracy:true,maximumAge:5000}
+  );
+}
+
+function getEffectiveLat(){ return skState.lat!=null?skState.lat:phoneGPS.lat; }
+function getEffectiveLon(){ return skState.lon!=null?skState.lon:phoneGPS.lon; }
+function usingPhoneGPS(){ return skState.lat==null&&phoneGPS.lat!=null; }
+
 var RAD2DEG=180/Math.PI;
 var MS2KTS=1.94384;
 
@@ -2628,15 +2663,17 @@ function updateNpsaWindSpd(){
 /* ── Boat marker on course map ─────────────────────────────── */
 function updateNpsaBoatMarker(){
   if(!npsaMap) return;
-  var lat=skState.lat, lon=skState.lon;
+  var lat=getEffectiveLat(), lon=getEffectiveLon();
   if(lat==null||lon==null){
     if(npsaBoatMarker){npsaMap.removeLayer(npsaBoatMarker);npsaBoatMarker=null;}
     return;
   }
   var cog=skState.cogDeg!=null?skState.cogDeg:0;
+  /* Blue = Signal K position · Purple = phone/tablet GPS fallback */
+  var fill=usingPhoneGPS()?'#7c3aed':'#2563eb';
   var boatHtml='<div style="width:26px;height:32px;transform:rotate('+cog+'deg);transform-origin:13px 16px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.5))">'
     +'<svg width="26" height="32" viewBox="0 0 26 32" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    +'<path d="M13 2 L23 28 L13 22 L3 28 Z" fill="#2563eb" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>'
+    +'<path d="M13 2 L23 28 L13 22 L3 28 Z" fill="'+fill+'" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>'
     +'</svg></div>';
   if(!npsaBoatMarker){
     npsaBoatMarker=L.marker([lat,lon],{
@@ -2645,9 +2682,13 @@ function updateNpsaBoatMarker(){
     }).addTo(npsaMap);
   } else {
     npsaBoatMarker.setLatLng([lat,lon]);
-    /* Update rotation in-place to avoid DOM flicker */
+    /* Update rotation and color in-place to avoid DOM flicker */
     var el=npsaBoatMarker.getElement();
-    if(el&&el.firstChild) el.firstChild.style.transform='rotate('+cog+'deg)';
+    if(el&&el.firstChild){
+      el.firstChild.style.transform='rotate('+cog+'deg)';
+      var path=el.firstChild.querySelector('path');
+      if(path) path.setAttribute('fill',fill);
+    }
   }
 }
 
@@ -2678,11 +2719,13 @@ function renderNpsaNextMark(){
   html+='<button onclick="raceAdvanceLeg(-1)" style="padding:5px 12px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">◀</button>';
   html+='<button onclick="raceAdvanceLeg(1)" style="padding:5px 12px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">▶</button>';
   html+='</div></div>';
-  var hasPos=skState.lat!=null&&skState.lon!=null;
+  var posLat=getEffectiveLat(), posLon=getEffectiveLon();
+  var hasPos=posLat!=null&&posLon!=null;
   var hasSog=skState.sogKts!=null&&skState.sogKts>0.2;
   if(hasPos&&markPos){
-    var brg=bearingDeg([skState.lat,skState.lon],markPos);
-    var dist=distNm([skState.lat,skState.lon],markPos);
+    if(usingPhoneGPS()) html+='<div style="font-size:11px;font-weight:600;color:#7c3aed;margin-bottom:6px;letter-spacing:.3px">&#x1F4F1; Phone GPS</div>';
+    var brg=bearingDeg([posLat,posLon],markPos);
+    var dist=distNm([posLat,posLon],markPos);
     var brgDiff=cog!=null?Math.round(((brg-cog+540)%360)-180):null;
     var brgDiffStr=brgDiff==null?'':brgDiff===0?' · on course':brgDiff>0?' · +'+brgDiff+'° right':' · '+brgDiff+'° left';
     html+='<div class="sr"><span class="sr-lbl">Bearing</span>';
@@ -2703,6 +2746,9 @@ function renderNpsaNextMark(){
   html+='</div>';
   el.innerHTML=html;
 }
+
+/* Start phone GPS watcher immediately so position is ready when needed */
+startPhoneGPS();
 </script>
 </body>
 </html>
