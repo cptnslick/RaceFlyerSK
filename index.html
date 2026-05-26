@@ -1100,7 +1100,8 @@ function updateSKStatusCard(){
   }
   html+='</div>';
   if(!skState.connected&&!skState.connecting){
-    var connVal=skState.host?skState.host+':'+skState.port:'';
+    var defaultHost=isWss?'openplotter.local:3443':'openplotter.local:3000';
+    var connVal=skState.host?skState.host+':'+skState.port:defaultHost;
     var isWss=skState.scheme==='wss';
     var onHttps=window.location.protocol==='https:';
     html+='<div class="sk-conn-row">';
