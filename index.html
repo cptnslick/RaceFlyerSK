@@ -1129,6 +1129,8 @@ function updateSKStatusCard(){
 
 function toggleSKScheme(){
   skState.scheme=skState.scheme==='wss'?'ws':'wss';
+  if(skState.scheme==='wss'&&skState.port===3000){skState.port=3443;localStorage.setItem('sk_port',3443);}
+  else if(skState.scheme==='ws'&&skState.port===3443){skState.port=3000;localStorage.setItem('sk_port',3000);}
   localStorage.setItem('sk_scheme',skState.scheme);
   updateSKStatusCard();
 }
