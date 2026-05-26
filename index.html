@@ -818,8 +818,8 @@ var wxState={loaded:false,loading:false,lat:null,lon:null,stationList:null,windK
 var skState={
   ws:null, connected:false, connecting:false, reconnectTimer:null,
   host:localStorage.getItem('sk_host')||'',
-  port:parseInt(localStorage.getItem('sk_port'))||3000,
-  scheme:localStorage.getItem('sk_scheme')||'ws',
+  port:parseInt(localStorage.getItem('sk_port'))||3443,
+  scheme:localStorage.getItem('sk_scheme')||'wss',
   windKts:null, windDir:null, windLabel:'TWS',
   sogKts:null, stwKts:null, heelDeg:null, depthFt:null,
   cogDeg:null,
