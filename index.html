@@ -1174,7 +1174,7 @@ function initSK(){
   if(skState.host) connectSK();
 }
 
-function onShowWeather(){if(!wxState.loaded) loadWeather();}
+function onShowWeather(){if(!wxState.loaded&&!wxState.loading) loadWeather();}
 
 function setLoadMsg(msg){
   var m=document.getElementById('dash-load-msg');
@@ -1241,6 +1241,10 @@ function getIPLocation(){
 }
 
 function getGPS(){
+  /* If phone GPS already has a recent fix, use it immediately */
+  if(phoneGPS.lat!=null&&phoneGPS.accuracy!=null){
+    return Promise.resolve({coords:{latitude:phoneGPS.lat,longitude:phoneGPS.lon,accuracy:phoneGPS.accuracy}});
+  }
   return new Promise(function(resolve,reject){
     var settled=false;
     var hardTimer=null;
