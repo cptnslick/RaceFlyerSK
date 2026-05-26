@@ -2497,14 +2497,6 @@ function renderRaceTab(){
   var html='';
   renderRaceTimerPanel();
 
-  /* ── Class toggle ── */
-  html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
-  html+='<span class="sec-lbl" style="margin:0">Class</span>';
-  html+='<div class="theme-seg" style="margin:0">';
-  html+='<button class="theme-seg-btn'+(npsaClass==='spin'?' active':'')+'" onclick="setNpsaClass(\'spin\')"><i class="ti ti-wind" aria-hidden="true"></i> Spin</button>';
-  html+='<button class="theme-seg-btn'+(npsaClass==='nspin'?' active':'')+'" onclick="setNpsaClass(\'nspin\')"><i class="ti ti-triangle" aria-hidden="true"></i> Non-Spin</button>';
-  html+='</div></div>';
-
   /* ── Wind ── */
   var tws=skState.windKts;
   var windDir=skState.windDir;
