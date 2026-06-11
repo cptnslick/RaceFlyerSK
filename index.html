@@ -812,7 +812,7 @@ function showTabById(id){
 }
 
 /* ── Weather ─────────────────────────────────────── */
-var wxState={loaded:false,loading:false,lat:null,lon:null,stationList:null,windKts:null,windDir:null,windGust:null,tideData:null,ipLocation:false};
+var wxState={loaded:false,loading:false,lat:null,lon:null,stationList:null,windKts:null,windDir:null,windGust:null,fcWindKts:null,fcWindDir:null,tideData:null,ipLocation:false};
 
 /* ── Signal K live sensor state ──────────────────── */
 var skState={
@@ -824,7 +824,7 @@ var skState={
   sogKts:null, stwKts:null, heelDeg:null, depthFt:null,
   cogDeg:null,
   _speedTrue:null, _dirTrue:null, _speedApp:null, _angleApp:null,
-  windKtsTs:null, windDirTs:null,
+  _ts:{}, /* per-path receive timestamps, drive staleness expiry */
   lat:null, lon:null,
   lastUpdate:null, weatherFiredOnce:false,
   skHelloReceived:false, reconnectCount:0, connectTimer:null
@@ -984,45 +984,73 @@ function disconnectSK(){
   skState.heelDeg=null;skState.depthFt=null;
   skState.cogDeg=null;
   skState._speedTrue=null;skState._dirTrue=null;skState._speedApp=null;skState._angleApp=null;
+  skState._ts={};
   skState.lat=null;skState.lon=null;
   skState.weatherFiredOnce=false;
+  applyWindToWx(); /* restore forecast wind on the dash */
+  updateDashConditions();
   updateSKStatusCard();
   updateTrimLiveBar();
+  updateNpsaBoatMarker();
+  renderNpsaNextMark();
 }
 
 function parseSKDelta(raw){
   var msg;
   try{msg=JSON.parse(raw);}catch(e){return;}
   if(!msg.updates) return;
+  var _now=Date.now(), ts=skState._ts;
   msg.updates.forEach(function(upd){
     (upd.values||[]).forEach(function(v){
       var p=v.path, val=v.value;
       if(val==null) return;
       switch(p){
-        case 'environment.wind.speedTrue':     skState._speedTrue=val; break; /* m/s */
-        case 'environment.wind.directionTrue': skState._dirTrue=((val*RAD2DEG)%360+360)%360; break;
-        case 'environment.wind.speedApparent': skState._speedApp=val; break; /* m/s */
-        case 'environment.wind.angleApparent': skState._angleApp=val; break; /* radians, bow-relative */
+        case 'environment.wind.speedTrue':     skState._speedTrue=val;ts.speedTrue=_now; break; /* m/s */
+        case 'environment.wind.directionTrue': skState._dirTrue=((val*RAD2DEG)%360+360)%360;ts.dirTrue=_now; break;
+        case 'environment.wind.speedApparent': skState._speedApp=val;ts.speedApp=_now; break; /* m/s */
+        case 'environment.wind.angleApparent': skState._angleApp=val;ts.angleApp=_now; break; /* radians, bow-relative */
         case 'navigation.position':
-          if(val.latitude!=null){skState.lat=val.latitude;skState.lon=val.longitude;}
+          if(val.latitude!=null){skState.lat=val.latitude;skState.lon=val.longitude;ts.pos=_now;}
           break;
-        case 'navigation.speedOverGround':     skState.sogKts=Math.round(val*MS2KTS*10)/10; break;
-        case 'navigation.speedThroughWater':   skState.stwKts=Math.round(val*MS2KTS*10)/10; break;
-        case 'navigation.courseOverGroundTrue':skState.cogDeg=((val*RAD2DEG)%360+360)%360; break;
-        case 'environment.depth.belowKeel':    skState.depthFt=Math.round(val*3.281*10)/10; break;
+        case 'navigation.speedOverGround':     skState.sogKts=Math.round(val*MS2KTS*10)/10;ts.sog=_now; break;
+        case 'navigation.speedThroughWater':   skState.stwKts=Math.round(val*MS2KTS*10)/10;ts.stw=_now; break;
+        case 'navigation.courseOverGroundTrue':skState.cogDeg=((val*RAD2DEG)%360+360)%360;ts.cog=_now; break;
+        case 'environment.depth.belowKeel':    skState.depthFt=Math.round(val*3.281*10)/10;ts.depth=_now; break;
         case 'navigation.attitude':
-          if(val.roll!=null) skState.heelDeg=Math.round(val.roll*RAD2DEG*10)/10;
+          if(val.roll!=null){skState.heelDeg=Math.round(val.roll*RAD2DEG*10)/10;ts.heel=_now;}
           break;
       }
     });
   });
+  sweepStaleSK();
+  recomputeSKWind();
+  skState.lastUpdate=_now;
+  onSKData();
+}
+
+/* Null out any value whose own source path has gone quiet for SK_STALE_MS.
+   Each path expires independently — a live GPS must not keep dead wind alive. */
+function sweepStaleSK(){
+  var _now=Date.now(), ts=skState._ts;
+  function stale(k){return ts[k]!=null&&_now-ts[k]>SK_STALE_MS;}
+  if(stale('speedTrue')) skState._speedTrue=null;
+  if(stale('dirTrue'))   skState._dirTrue=null;
+  if(stale('speedApp'))  skState._speedApp=null;
+  if(stale('angleApp'))  skState._angleApp=null;
+  if(stale('sog'))   skState.sogKts=null;
+  if(stale('stw'))   skState.stwKts=null;
+  if(stale('cog'))   skState.cogDeg=null;
+  if(stale('depth')) skState.depthFt=null;
+  if(stale('heel'))  skState.heelDeg=null;
+  if(stale('pos')){skState.lat=null;skState.lon=null;} /* lets phone GPS take over */
+}
+
+function recomputeSKWind(){
   /* Prefer true wind; fall back to computing it from apparent + COG via vector triangle */
-  var _now=Date.now();
   if(skState._speedTrue!=null&&skState._dirTrue!=null){
     skState.windKts=Math.round(skState._speedTrue*MS2KTS*10)/10;
     skState.windDir=Math.round(skState._dirTrue);
     skState.windLabel='TWS';
-    skState.windKtsTs=_now;skState.windDirTs=_now;
   } else if(skState._speedApp!=null&&skState._angleApp!=null){
     if(skState.cogDeg!=null&&skState.sogKts!=null){
       /* Vector triangle: True = Apparent + Boat velocity
@@ -1036,28 +1064,43 @@ function parseSKDelta(raw){
       /* Direction is meaningless when TWS ~= 0 (boat motion exactly cancels apparent) */
       skState.windDir=twsMs>0.05?Math.round((Math.atan2(tx,ty)*RAD2DEG+180+360)%360):null;
       skState.windLabel='cTWS'; /* computed from apparent */
-      skState.windKtsTs=_now;skState.windDirTs=skState.windDir!=null?_now:skState.windDirTs;
     } else {
       /* No COG — apparent angle is bow-relative, not a compass bearing */
       skState.windKts=Math.round(skState._speedApp*MS2KTS*10)/10;
       skState.windDir=null;
       skState.windLabel='AWS';
-      skState.windKtsTs=_now;
     }
+  } else {
+    skState.windKts=null;
+    skState.windDir=null;
   }
-  /* Staleness: drop values whose timestamp is older than SK_STALE_MS */
-  if(skState.windKtsTs!=null&&_now-skState.windKtsTs>SK_STALE_MS) skState.windKts=null;
-  if(skState.windDirTs!=null&&_now-skState.windDirTs>SK_STALE_MS) skState.windDir=null;
-  skState.lastUpdate=Date.now();
-  onSKData();
+}
+
+/* Expiry also has to fire when the socket goes completely silent —
+   no deltas means parseSKDelta never runs its sweep. */
+setInterval(function(){
+  if(!skState.connected) return;
+  if(skState.lastUpdate!=null&&Date.now()-skState.lastUpdate<5000) return;
+  sweepStaleSK();
+  recomputeSKWind();
+  applyWindToWx();
+  refreshSKUI();
+},5000);
+
+/* Live wind overrides the forecast on the dash; the forecast values are
+   kept in fcWind* so they can be restored when live wind goes away. */
+function applyWindToWx(){
+  if(skState.connected&&skState.windKts!=null){
+    wxState.windKts=Math.round(skState.windKts);
+    wxState.windDir=skState.windDir!=null?skState.windDir:wxState.fcWindDir;
+  } else {
+    wxState.windKts=wxState.fcWindKts;
+    wxState.windDir=wxState.fcWindDir;
+  }
 }
 
 function onSKData(){
-  /* Override wxState wind with live values */
-  if(skState.windKts!=null){
-    wxState.windKts=Math.round(skState.windKts);
-    wxState.windDir=skState.windDir;
-  }
+  applyWindToWx();
   /* If no weather loaded yet and we have GPS, auto-fire loadWeather once */
   if(skState.lat!=null&&!skState.weatherFiredOnce&&!wxState.loaded&&!wxState.loading){
     skState.weatherFiredOnce=true;
@@ -1069,7 +1112,10 @@ function onSKData(){
   if(skState.windKts!=null) pushWindSample(skState.windKts);
   pushWindHistSample();
   syncTrimToWind();
-  /* Refresh UI */
+  refreshSKUI();
+}
+
+function refreshSKUI(){
   updateDashConditions();
   updateSKStatusCard();
   updateTrimLiveBar();
@@ -1370,9 +1416,10 @@ function compass(deg){
 
 function renderWx(loc,wx,marine,tides){
   if(wx){
-    wxState.windKts=Math.round(wx.wind_speed_10m);
-    wxState.windDir=wx.wind_direction_10m;
+    wxState.fcWindKts=Math.round(wx.wind_speed_10m);
+    wxState.fcWindDir=wx.wind_direction_10m;
     wxState.windGust=Math.round(wx.wind_gusts_10m);
+    applyWindToWx();
   }
   if(tides&&tides.predictions) wxState.tideData=tides;
   updateDashConditions();
