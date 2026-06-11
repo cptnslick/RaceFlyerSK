@@ -1234,6 +1234,8 @@ function setLoadMsg(msg){
   el.innerHTML='<div class="wx-loading"><i class="ti ti-loader wx-spin" aria-hidden="true"></i><div style="margin-top:12px;font-size:13px">'+msg+'</div></div>';
 }
 function loadWeather(){
+  if(wxState.loading) return;
+  wxState.ipLocation=false; /* re-decided per attempt — a stale true mislabels real fixes */
   wxState.loading=true;
   updateDashConditions();
   setLoadMsg('Getting location…');
@@ -1347,7 +1349,10 @@ function fetchWx(lat,lon){
     '&minutely_15=wind_speed_10m,wind_direction_10m,wind_gusts_10m'+
     '&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=2&timezone=auto';
   return fetch(url).then(function(r){return r.json();}).then(function(d){
-    var cur=d.current||{};
+    /* An error payload has no .current — without this check NaN flows into
+       the wind state and bft(NaN) renders as F12 Hurricane */
+    if(d.error||!d.current) throw new Error(d.reason||'Weather unavailable');
+    var cur=d.current;
     cur.minutely_15=d.minutely_15;
     return cur;
   });
