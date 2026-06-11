@@ -514,7 +514,7 @@ html,body{
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.1.8</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.2.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -821,10 +821,10 @@ var skState={
 var SK_STALE_MS=30000;
 
 /* ── Phone/tablet GPS fallback (used when SK has no position) ── */
-var phoneGPS={lat:null,lon:null,watcher:null,accuracy:null};
+var phoneGPS={lat:null,lon:null,watcher:null,accuracy:null,denied:false};
 
 function startPhoneGPS(){
-  if(phoneGPS.watcher!=null||!navigator.geolocation) return;
+  if(phoneGPS.watcher!=null||phoneGPS.denied||!navigator.geolocation) return;
   phoneGPS.watcher=navigator.geolocation.watchPosition(
     function(pos){
       phoneGPS.lat=pos.coords.latitude;
@@ -845,11 +845,25 @@ function startPhoneGPS(){
     },
     function(err){
       /* Permission denied — stop trying; other errors are transient, keep watching */
-      if(err.code===1){navigator.geolocation.clearWatch(phoneGPS.watcher);phoneGPS.watcher=null;}
+      if(err.code===1){stopPhoneGPS();phoneGPS.denied=true;}
     },
     {enableHighAccuracy:true,maximumAge:5000}
   );
 }
+
+function stopPhoneGPS(){
+  if(phoneGPS.watcher!=null){
+    navigator.geolocation.clearWatch(phoneGPS.watcher);
+    phoneGPS.watcher=null;
+  }
+}
+
+/* High-accuracy watch keeps the GPS radio hot — pause it while the tab
+   is hidden. Last fix is kept so the UI has something on return. */
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden) stopPhoneGPS();
+  else startPhoneGPS();
+});
 
 function getEffectiveLat(){ return skState.lat!=null?skState.lat:phoneGPS.lat; }
 function getEffectiveLon(){ return skState.lon!=null?skState.lon:phoneGPS.lon; }
@@ -931,7 +945,9 @@ function scheduleReconnect(){
   if(!skState.host) return;
   skState.reconnectCount++;
   updateSKStatusCard();
-  skState.reconnectTimer=setTimeout(connectSK,5000);
+  /* Back off 5s → 30s so an unreachable server doesn't burn battery all day */
+  var delay=Math.min(30000,5000*skState.reconnectCount);
+  skState.reconnectTimer=setTimeout(connectSK,delay);
 }
 
 function cancelSKConnect(){
@@ -1358,12 +1374,26 @@ function fetchMarine(lat,lon){
 
 function fetchTides(lat,lon){
   var listUrl='https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions';
-  var stPromise=wxState.stationList
-    ? Promise.resolve(wxState.stationList)
-    : fetch(listUrl).then(function(r){return r.json();}).then(function(d){
-        wxState.stationList=d.stations||[];
-        return wxState.stationList;
+  var stPromise;
+  if(wxState.stationList){
+    stPromise=Promise.resolve(wxState.stationList);
+  } else {
+    /* The station list is ~1-2 MB and changes ~never — cache a slimmed
+       copy in localStorage for 30 days instead of re-downloading per session */
+    var cached=null;
+    try{cached=JSON.parse(localStorage.getItem('noaa_stations'));}catch(e){}
+    if(cached&&cached.ts&&Date.now()-cached.ts<30*24*3600*1000&&cached.stations&&cached.stations.length){
+      wxState.stationList=cached.stations;
+      stPromise=Promise.resolve(cached.stations);
+    } else {
+      stPromise=fetch(listUrl).then(function(r){return r.json();}).then(function(d){
+        var slim=(d.stations||[]).map(function(s){return {id:s.id,name:s.name,lat:s.lat,lng:s.lng};});
+        wxState.stationList=slim;
+        try{localStorage.setItem('noaa_stations',JSON.stringify({ts:Date.now(),stations:slim}));}catch(e){}
+        return slim;
       });
+    }
+  }
   return stPromise.then(function(stations){
     var nearest=null,minD=Infinity;
     stations.forEach(function(s){
@@ -2446,18 +2476,36 @@ function timerTick(){
   if(sec<=0&&timerState.running){
     timerState.running=false;
     clearInterval(timerState._iv);timerState._iv=null;
+    releaseWakeLock();
     var rb=document.getElementById('race-timer-btn');
     if(rb){rb.innerHTML='<i class="ti ti-player-play" aria-hidden="true"></i> Start';rb.style.background='';rb.style.color='';}
   }
 }
+/* Keep the screen awake during the start sequence — backgrounded tabs get
+   their timers throttled and the countdown horns are silently skipped */
+var _wakeLock=null;
+function acquireWakeLock(){
+  if(!navigator.wakeLock) return;
+  navigator.wakeLock.request('screen').then(function(wl){_wakeLock=wl;}).catch(function(){});
+}
+function releaseWakeLock(){
+  if(_wakeLock){try{_wakeLock.release();}catch(e){} _wakeLock=null;}
+}
+document.addEventListener('visibilitychange',function(){
+  /* the lock is auto-released when the page hides; re-acquire on return */
+  if(!document.hidden&&timerState.running) acquireWakeLock();
+});
+
 function timerStart(){
   if(timerState.running){
     timerState.running=false;clearInterval(timerState._iv);timerState._iv=null;
+    releaseWakeLock();
     var rb=document.getElementById('race-timer-btn');
     if(rb){rb.innerHTML='<i class="ti ti-player-play" aria-hidden="true"></i> Start';rb.style.background='';rb.style.color='';}
     return;
   }
   try{_timerACtx().resume();}catch(e){}
+  acquireWakeLock();
   timerState.running=true;
   timerState.endEpoch=Date.now()+timerState.durationMs;
   timerState._beeped={};
@@ -2469,6 +2517,7 @@ function timerStart(){
 }
 function timerReset(){
   timerState.running=false;clearInterval(timerState._iv);timerState._iv=null;
+  releaseWakeLock();
   timerState.endEpoch=null;timerState._beeped={};
   var m=Math.floor(timerState.durationMs/60000);
   var disp=document.getElementById('race-timer-disp');
