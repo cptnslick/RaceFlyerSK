@@ -544,7 +544,7 @@ html,body{
         <div class="tws-display"><span id="up-tws">12</span><span class="tws-unit"> kts</span></div>
         <div class="tws-row">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('up-slider',updateUpwind,-1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('up-slider',updateUpwind,-1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">−</button>
-          <input type="range" min="0" max="32" step="1" value="12" id="up-slider" oninput="updateUpwind()">
+          <input type="range" min="0" max="32" step="1" value="12" id="up-slider" oninput="trimTouched();updateUpwind()">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('up-slider',updateUpwind,1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('up-slider',updateUpwind,1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">+</button>
         </div>
         <div id="up-badge"></div>
@@ -560,7 +560,7 @@ html,body{
         <div class="tws-display"><span id="reach-tws">12</span><span class="tws-unit"> kts</span></div>
         <div class="tws-row">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('reach-slider',updateReach,-1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('reach-slider',updateReach,-1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">−</button>
-          <input type="range" min="6" max="20" step="1" value="12" id="reach-slider" oninput="updateReach()">
+          <input type="range" min="6" max="20" step="1" value="12" id="reach-slider" oninput="trimTouched();updateReach()">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('reach-slider',updateReach,1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('reach-slider',updateReach,1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">+</button>
         </div>
       </div>
@@ -599,7 +599,7 @@ html,body{
         <div class="tws-display"><span id="run-tws">12</span><span class="tws-unit"> kts</span></div>
         <div class="tws-row">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('run-slider',updateRun,-1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('run-slider',updateRun,-1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">−</button>
-          <input type="range" min="6" max="20" step="1" value="12" id="run-slider" oninput="updateRun()">
+          <input type="range" min="6" max="20" step="1" value="12" id="run-slider" oninput="trimTouched();updateRun()">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('run-slider',updateRun,1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('run-slider',updateRun,1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">+</button>
         </div>
       </div>
@@ -712,6 +712,7 @@ function adjSlider(id,fn,delta){
   fn();
 }
 function startAdj(id,fn,delta){
+  trimTouched();
   adjSlider(id,fn,delta);
   adjTimer=setInterval(function(){adjSlider(id,fn,delta);},150);
 }
@@ -775,7 +776,13 @@ function windAvgKts(){
   return sum/windAvgBuf.length;
 }
 
+/* Manual slider input wins over live wind for a grace period — without
+   this, every SK delta (~1/s) snapped the sliders back mid-exploration */
+var trimManualTs=0;
+function trimTouched(){trimManualTs=Date.now();}
+
 function syncTrimToWind(){
+  if(Date.now()-trimManualTs<30000) return;
   var w=windAvgKts();
   if(w==null) w=wxState.windKts;
   if(w==null||isNaN(w)) return;
