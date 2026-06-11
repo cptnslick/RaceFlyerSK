@@ -477,6 +477,17 @@ html,body{
   .wind-zone{padding:10px 0 12px}
   .tws-display{font-size:44px;margin:4px 0 10px}
 }
+/* Eink/kiosk display mode — activated by ?eink=1 in URL */
+#eink-panel{display:none}
+body.eink-mode{background:#fff!important}
+body.eink-mode #app{max-width:none;margin:0;padding:0;background:#000;min-height:100dvh}
+body.eink-mode .top-bar,body.eink-mode .nav-tabs{display:none!important}
+body.eink-mode .screen{display:none!important}
+body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;height:100dvh;background:#000}
+.eink-block{background:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:12px 8px;text-align:center;overflow:hidden}
+.eink-val{font-size:clamp(2rem,7vw,4.5rem);font-weight:700;color:#000;line-height:1.1;font-variant-numeric:tabular-nums;font-family:sans-serif}
+.eink-lbl{font-size:clamp(.75rem,2.5vw,1rem);font-weight:600;color:#333;text-transform:uppercase;letter-spacing:.08em;margin-top:6px;font-family:sans-serif}
+.eink-sub{font-size:clamp(.65rem,2vw,.9rem);color:#555;margin-top:4px;font-family:sans-serif}
 </style>
 </head>
 <body>
@@ -514,7 +525,7 @@ html,body{
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.2.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.3.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -647,6 +658,30 @@ html,body{
         <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:22px">Wind, weather &amp; tides for your GPS location</div>
         <button onclick="loadWeather()" style="background:var(--t600);color:#fff;border:none;border-radius:var(--border-radius-md);padding:13px 32px;font-size:15px;font-weight:500;cursor:pointer;font-family:var(--font-sans);min-height:48px;-webkit-tap-highlight-color:transparent">Get conditions</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Eink/kiosk display view — shown when ?eink=1 is in the URL -->
+  <div id="eink-panel">
+    <div class="eink-block">
+      <div class="eink-val" id="ek-wind-val">--</div>
+      <div class="eink-lbl">Wind</div>
+      <div class="eink-sub" id="ek-wind-dir">--</div>
+    </div>
+    <div class="eink-block">
+      <div class="eink-val" id="ek-sog-val">--</div>
+      <div class="eink-lbl">Speed (SOG)</div>
+      <div class="eink-sub" id="ek-cog-val">COG --</div>
+    </div>
+    <div class="eink-block">
+      <div class="eink-val" id="ek-mark-brg">--</div>
+      <div class="eink-lbl" id="ek-mark-name">Next mark</div>
+      <div class="eink-sub" id="ek-mark-dist">--</div>
+    </div>
+    <div class="eink-block">
+      <div class="eink-val" id="ek-timer-val">--:--</div>
+      <div class="eink-lbl">Timer</div>
+      <div class="eink-sub" id="ek-timer-sub"></div>
     </div>
   </div>
 
@@ -2581,6 +2616,8 @@ function raceAdvanceLeg(delta){
   raceState.legIdx=Math.max(1,Math.min(v.marks.length-1,raceState.legIdx+delta));
   renderRaceTab();
   if(raceState.courseId) selectCourse(raceState.courseId,true);
+  sendNextMarkToSK();
+  refreshEinkUI();
 }
 
 function renderRaceTab(){
@@ -2862,6 +2899,128 @@ function checkForUpdate(){
       setTimeout(function(){btn.textContent='Check for update';btn.disabled=false;},2500);
     });
 }
+
+/* ── Eink/kiosk display mode ── */
+var EINK_MODE=new URLSearchParams(location.search).get('eink')==='1';
+if(EINK_MODE) document.body.classList.add('eink-mode');
+
+function refreshEinkUI(){
+  if(!EINK_MODE) return;
+  var windEl=document.getElementById('ek-wind-val');
+  var windDirEl=document.getElementById('ek-wind-dir');
+  if(windEl) windEl.textContent=skState.windKts!=null?skState.windKts.toFixed(1)+' kts':'--';
+  if(windDirEl){
+    var dir=skState.windDir,cog=skState.cogDeg,twaStr='';
+    if(dir!=null&&cog!=null){
+      var raw=((dir-cog)+360)%360;
+      var twaVal=raw<=180?raw:360-raw;
+      twaStr=' · '+Math.round(twaVal)+'° '+(raw<=180?'Stbd':'Port');
+    }
+    windDirEl.textContent=dir!=null?compass(dir)+' '+Math.round(dir)+'°'+twaStr:'--';
+  }
+  var sogEl=document.getElementById('ek-sog-val');
+  var cogEl=document.getElementById('ek-cog-val');
+  if(sogEl) sogEl.textContent=skState.sogKts!=null?skState.sogKts.toFixed(1)+' kts':'--';
+  if(cogEl) cogEl.textContent=skState.cogDeg!=null?'COG '+compass(skState.cogDeg)+' '+Math.round(skState.cogDeg)+'°':'COG --';
+  var brgEl=document.getElementById('ek-mark-brg');
+  var nameEl=document.getElementById('ek-mark-name');
+  var distEl=document.getElementById('ek-mark-dist');
+  var v=getRaceVariant();
+  if(v&&getEffectiveLat()!=null){
+    var idx=Math.min(raceState.legIdx,v.marks.length-1);
+    var markId=v.marks[idx];
+    var markPos=getActiveMarks()[markId];
+    var markName=getActiveMarkNames()[markId]||markId;
+    if(markPos){
+      var posLat=getEffectiveLat(),posLon=getEffectiveLon();
+      var brg=bearingDeg([posLat,posLon],markPos);
+      var dist=distNm([posLat,posLon],markPos);
+      if(brgEl) brgEl.textContent=compass(brg)+' '+Math.round(brg)+'°';
+      if(nameEl) nameEl.textContent=markName+' (Leg '+idx+'/'+(v.marks.length-1)+')';
+      if(distEl){
+        var distStr=dist.toFixed(2)+' nm';
+        if(skState.sogKts!=null&&skState.sogKts>0.2){
+          var etaMins=Math.round((dist/skState.sogKts)*60);
+          distStr+=' · ~'+(etaMins<60?etaMins+' min':Math.floor(etaMins/60)+'h'+(etaMins%60?' '+(etaMins%60)+'m':''));
+        }
+        distEl.textContent=distStr;
+      }
+    } else {
+      if(brgEl) brgEl.textContent='--';
+      if(nameEl) nameEl.textContent='Next mark';
+      if(distEl) distEl.textContent='--';
+    }
+  } else {
+    if(brgEl) brgEl.textContent='--';
+    if(nameEl) nameEl.textContent='Next mark';
+    if(distEl) distEl.textContent=v?'No GPS':'No course set';
+  }
+  var timerEl=document.getElementById('ek-timer-val');
+  var timerSubEl=document.getElementById('ek-timer-sub');
+  if(timerEl){
+    var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):timerState.durationMs/1000;
+    var m=Math.floor(sec/60),s=Math.floor(sec%60);
+    timerEl.textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+    timerEl.style.color=sec<=10?'#cc0000':sec<=60?'#cc8800':'#000';
+    if(timerSubEl) timerSubEl.textContent=timerState.running?'Running':'Stopped';
+  }
+}
+
+if(EINK_MODE) setInterval(refreshEinkUI,2000);
+
+/* ── Send next mark data to SignalK ── */
+function skPut(path,value){
+  var url=(skState.scheme==='wss'?'https':'http')+'://'+skState.host+':'+skState.port
+         +'/signalk/v1/api/vessels/self/'+path.replace(/\./g,'/');
+  return fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({value:value})});
+}
+
+var _skPut401Shown=false;
+function sendNextMarkToSK(){
+  if(!skState.connected||!skState.host||!raceState.courseId) return;
+  var posLat=getEffectiveLat(),posLon=getEffectiveLon();
+  if(posLat==null||posLon==null) return;
+  var v=getRaceVariant();
+  if(!v) return;
+  var idx=Math.min(raceState.legIdx,v.marks.length-1);
+  var markId=v.marks[idx];
+  var markPos=getActiveMarks()[markId];
+  if(!markPos) return;
+  var markName=getActiveMarkNames()[markId]||markId;
+  var posArr=[posLat,posLon];
+  var brgRad=bearingDeg(posArr,markPos)*Math.PI/180;
+  var distM=distNm(posArr,markPos)*1852;
+  var puts=[
+    skPut('navigation.courseGreatCircle.nextPoint.position',{latitude:markPos[0],longitude:markPos[1]}),
+    skPut('navigation.courseGreatCircle.nextPoint.bearingTrue',brgRad),
+    skPut('navigation.courseGreatCircle.nextPoint.distance',distM),
+    skPut('navigation.courseGreatCircle.nextPoint.name',markName)
+  ];
+  if(skState.sogKts!=null&&skState.sogKts>0.2){
+    var ttg=Math.round((distNm(posArr,markPos)/skState.sogKts)*3600);
+    puts.push(skPut('navigation.courseGreatCircle.nextPoint.timeToGo',ttg));
+  }
+  Promise.allSettled(puts).then(function(results){
+    results.forEach(function(r){
+      if(r.status==='fulfilled'&&r.value.status===401&&!_skPut401Shown){
+        _skPut401Shown=true;
+        console.warn('SignalK PUT 401 — unauthenticated writes may be disabled');
+        var skCard=document.getElementById('sk-card');
+        if(skCard){
+          var note=document.createElement('div');
+          note.style.cssText='font-size:11px;color:var(--a400);margin-top:6px;padding:4px 0';
+          note.textContent='Note: SignalK rejected course writes (401). Enable unauthenticated PUT in SK settings.';
+          skCard.appendChild(note);
+        }
+      } else if(r.status==='rejected'){
+        console.warn('SignalK PUT failed:',r.reason);
+      }
+    });
+  });
+}
+
+setInterval(sendNextMarkToSK,5000);
 </script>
 </body>
 </html>
