@@ -2815,10 +2815,21 @@ function checkForUpdate(){
   if(!btn) return;
   btn.textContent='Checking…';
   btn.disabled=true;
-  fetch('/update',{method:'POST'})
-    .then(function(r){return r.text();})
-    .then(function(msg){
-      if(msg.indexOf('Updated')!==-1){
+  /* X-Update-Request: serve.py rejects POSTs without it, which also stops
+     cross-origin pages from triggering updates (forces CORS preflight) */
+  fetch('/update',{method:'POST',headers:{'X-Update-Request':'1'}})
+    .then(function(r){
+      if(r.status===404){ /* not served from the Pi (e.g. Netlify) */
+        return Promise.reject('unavailable');
+      }
+      return r.text().then(function(msg){return {status:r.status,msg:msg};});
+    })
+    .then(function(res){
+      var msg=res.msg;
+      if(res.status===409){
+        btn.textContent='Update already running';
+        setTimeout(function(){btn.textContent='Check for update';btn.disabled=false;},2500);
+      } else if(msg.indexOf('Updated')!==-1){
         btn.textContent='Updated — reloading…';
         setTimeout(function(){window.location.reload();},1200);
       } else if(msg.indexOf('No change')!==-1){
