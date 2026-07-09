@@ -305,19 +305,28 @@ html,body{
 .tws-btn:active,.tws-btn.pressing{background:var(--t50);border-color:var(--t400);color:var(--t600)}
 .tws-row input[type=range]{
   -webkit-appearance:none;appearance:none;
-  flex:1;height:6px;
-  border-radius:3px;
-  background:var(--t100);
+  /* Full-height hit area — a 6px-tall input is nearly ungrabbable by finger;
+     the visible 6px track is drawn on the track pseudo-element instead */
+  flex:1;height:52px;
+  background:none;
   outline:none;cursor:pointer;
+  touch-action:none;
+}
+.tws-row input[type=range]::-webkit-slider-runnable-track{
+  height:6px;border-radius:3px;background:var(--t100);
 }
 .tws-row input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;
   width:52px;height:52px;
+  margin-top:-23px; /* center 52px thumb on 6px track */
   border-radius:50%;
   background:var(--t600);
   cursor:pointer;
   border:5px solid var(--color-background-primary);
   box-shadow:0 2px 10px rgba(0,0,0,.25);
+}
+.tws-row input[type=range]::-moz-range-track{
+  height:6px;border-radius:3px;background:var(--t100);
 }
 .tws-row input[type=range]::-moz-range-thumb{
   width:52px;height:52px;
@@ -525,7 +534,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.3.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.3.1</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -562,20 +571,22 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
         <div class="tws-display"><span id="reach-tws">12</span><span class="tws-unit"> kts</span></div>
         <div class="tws-row">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('reach-slider',updateReach,-1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('reach-slider',updateReach,-1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">−</button>
-          <input type="range" min="6" max="20" step="1" value="12" id="reach-slider" oninput="trimTouched();updateReach()">
+          <input type="range" min="0" max="32" step="1" value="12" id="reach-slider" oninput="trimTouched();updateReach()">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('reach-slider',updateReach,1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('reach-slider',updateReach,1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">+</button>
         </div>
+        <div id="reach-badge"></div>
       </div>
       <div id="reach-polar"></div>
+      <div id="reach-sail"></div>
       <div class="pt-hdr"><div class="pt-title">Beam reach <span style="font-weight:400;font-size:13px;color:var(--color-text-secondary)">TWA 90-105 deg</span></div></div>
       <div class="pt-rows">
         <div class="pr"><span class="pr-lbl">Sail</span><span class="pr-val"><span class="sp">A-sail</span> light air &middot; <span class="sp">Spin</span> medium+</span></div>
         <div class="pr"><span class="pr-lbl">Backstay</span><span class="pr-val">Released completely</span></div>
         <div class="pr"><span class="pr-lbl">Running backs</span><span class="pr-val">Windward on, leeward eased</span></div>
         <div class="pr"><span class="pr-lbl">Checkstays</span><span class="pr-val">Light tension</span></div>
-        <div class="pr"><span class="pr-lbl">Traveler</span><span class="pr-val">Centered</span></div>
+        <div class="pr"><span class="pr-lbl">Traveler</span><span class="pr-val">Eased to leeward -- boom past the quarter</span></div>
         <div class="pr"><span class="pr-lbl">Outhaul</span><span class="pr-val">Eased for power</span></div>
-        <div class="pr"><span class="pr-lbl">Mainsheet</span><span class="pr-val">Twist open -- ease sheet</span></div>
+        <div class="pr"><span class="pr-lbl">Mainsheet</span><span class="pr-val">Twist open -- ease sheet, vang holds leech</span></div>
         <div class="pr pr-goal"><span class="pr-lbl">Goal</span><span class="pr-val">Boat speed, not pointing</span></div>
       </div>
       <div class="pt-hdr"><div class="pt-title">Broad reach <span style="font-weight:400;font-size:13px;color:var(--color-text-secondary)">TWA 105-140 deg</span></div></div>
@@ -587,7 +598,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
         <div class="pr"><span class="pr-lbl">Traveler</span><span class="pr-val">Eased off CL</span></div>
         <div class="pr"><span class="pr-lbl">Outhaul</span><span class="pr-val">Eased</span></div>
         <div class="pr"><span class="pr-lbl">Mainsheet</span><span class="pr-val">Vang on to hold leech</span></div>
-        <div class="pr pr-goal"><span class="pr-lbl">Goal</span><span class="pr-val">Gybe angles per polar</span></div>
+        <div class="pr pr-goal"><span class="pr-lbl">Goal</span><span class="pr-val" id="reach-goal-val">Gybe angles per polar</span></div>
       </div>
       <p class="sec-lbl">Reaching rules</p>
       <div class="rule-card"><div class="rule-title">Sail selection (from the manual)</div><div class="rule-body">A-sail: very light air TWA &gt;90 deg; normal winds deploy at TWA 105 deg; 18 kts+ only if TWA &gt;120 deg. Spin (.6oz) is primary reaching/running sail 7-18 kts.</div></div>
@@ -601,11 +612,13 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
         <div class="tws-display"><span id="run-tws">12</span><span class="tws-unit"> kts</span></div>
         <div class="tws-row">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('run-slider',updateRun,-1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('run-slider',updateRun,-1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">−</button>
-          <input type="range" min="6" max="20" step="1" value="12" id="run-slider" oninput="trimTouched();updateRun()">
+          <input type="range" min="0" max="32" step="1" value="12" id="run-slider" oninput="trimTouched();updateRun()">
           <button class="tws-btn" ontouchstart="event.preventDefault();startAdj('run-slider',updateRun,1)" ontouchend="stopAdj()" ontouchcancel="stopAdj()" onmousedown="startAdj('run-slider',updateRun,1)" onmouseup="stopAdj()" onmouseleave="stopAdj()">+</button>
         </div>
+        <div id="run-badge"></div>
       </div>
       <div id="run-polar"></div>
+      <div id="run-sail"></div>
       <div class="pt-hdr"><div class="pt-title">Run <span style="font-weight:400;font-size:13px;color:var(--color-text-secondary)">TWA 140 deg+</span></div></div>
       <div class="pt-rows">
         <div class="pr"><span class="pr-lbl">Sail</span><span class="pr-val"><span class="sp">.6oz Spin</span> 7-18 kts &middot; <span class="sp">A-sail</span> &lt;7 kts &middot; see manual &gt;18 kts</span></div>
@@ -615,7 +628,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
         <div class="pr"><span class="pr-lbl">Traveler</span><span class="pr-val">Fully eased -- boom to shroud</span></div>
         <div class="pr"><span class="pr-lbl">Outhaul</span><span class="pr-val">Eased</span></div>
         <div class="pr"><span class="pr-lbl">Mainsheet</span><span class="pr-val">Vang holds boom -- ease sheet</span></div>
-        <div class="pr pr-goal"><span class="pr-lbl">Goal</span><span class="pr-val">Gybe angles -- don't dead run</span></div>
+        <div class="pr pr-goal"><span class="pr-lbl">Goal</span><span class="pr-val" id="run-goal-val">Gybe angles per polar</span></div>
       </div>
       <p class="sec-lbl">Running rules</p>
       <div class="rule-card"><div class="rule-title">Running backs rule</div><div class="rule-body">Always one and only one tensioned. Always windward. One crew member owns this station.</div></div>
@@ -717,12 +730,31 @@ function polarHTML(p,mode){
   if(mode==='run') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — DOWNWIND VMG</div><div class="polar-stats"><div class="polar-stat"><div class="polar-stat-val">'+p.downTWA.toFixed(1)+'</div><div class="polar-stat-lbl">Best TWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.downBTV.toFixed(2)+'</div><div class="polar-stat-lbl">Target BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.downVMG.toFixed(2)+'</div><div class="polar-stat-lbl">VMG</div></div></div></div>';
 }
 
+/* Bands are contiguous and non-overlapping so the badge, sail call and range
+   label always agree (the old 13-14 kt overlap showed "AP #1" while the
+   Breeze row claimed #2 from 13). Crossover calls stay noted in the text. */
 const UPWIND_BANDS=[
-  {lbl:'Drifter',range:'Until 2 kts boat speed',min:0,max:2,bc:'cb-drift',sail:'Drifter',backs:'Fully off',runbacks:'Slack only',checks:'Light tension',trav:'Max windward',out:'Fully eased',main:'Ease -- let sail breathe',goal:'Any flow at all'},
+  {lbl:'Drifter',range:'Until 2 kts boat speed',min:0,max:1,bc:'cb-drift',sail:'Drifter',backs:'Fully off',runbacks:'Slack only',checks:'Light tension',trav:'Max windward',out:'Fully eased',main:'Ease -- let sail breathe',goal:'Any flow at all'},
   {lbl:'Light air',range:'2-7 kts TWS',min:2,max:7,bc:'cb-light',sail:'Light #1',backs:'Fully off',runbacks:'Feather -- stop mast pumping',checks:'Eased',trav:'Windward of CL',out:'Eased -- fist-width curve',main:'Softer than feels right',goal:'Power first, point later'},
-  {lbl:'Medium',range:'8-14 kts TWS',min:8,max:14,bc:'cb-med',sail:'AP #1',backs:'Building -- active in puffs',runbacks:'Firm -- support rig in chop',checks:'Moderate',trav:'At CL -- drop in puffs',out:'Approaching firm',main:'Controls leech tension',goal:'Speed over pointing'},
-  {lbl:'Breeze',range:'13-22 kts TWS',min:13,max:22,bc:'cb-breeze',sail:'#2',backs:'On hard -- primary depower',runbacks:'Loaded -- windward takes load',checks:'Both tensioned',trav:'Leeward of CL',out:'Firm to hard',main:'Last resort to depower',goal:'Keep boat flat'},
+  {lbl:'Medium',range:'8-14 kts TWS',min:8,max:14,bc:'cb-med',sail:'AP #1 (#2 from 13 if overpowered)',backs:'Building -- active in puffs',runbacks:'Firm -- support rig in chop',checks:'Moderate',trav:'At CL -- drop in puffs',out:'Approaching firm',main:'Controls leech tension',goal:'Speed over pointing'},
+  {lbl:'Breeze',range:'15-21 kts TWS',min:15,max:21,bc:'cb-breeze',sail:'#2',backs:'On hard -- primary depower',runbacks:'Loaded -- windward takes load',checks:'Both tensioned',trav:'Leeward of CL',out:'Firm to hard',main:'Last resort to depower',goal:'Keep boat flat'},
   {lbl:'Survival',range:'22-30 kts (#3), 27+ kts (#4)',min:22,max:99,bc:'cb-surv',sail:'#3 then #4 above 27 kts',backs:'Maximum',runbacks:'Maximum windward',checks:'Maximum',trav:'Well down leeward',out:'Hard out',main:'Ease to survive',goal:"Don't fight the boat"},
+];
+
+/* Off-wind sail selection per the manual: A-sail in light air; .6oz spin is
+   the primary reaching/running sail 7-18 kts; above 18 the A-sail only if
+   TWA >120 deg, otherwise white sails. */
+const REACH_BANDS=[
+  {lbl:'Light air',range:'0-6 kts TWS',min:0,max:6,bc:'cb-light',sail:'A-sail',note:'Manual: A-sail in very light air at TWA >90 deg'},
+  {lbl:'Spin range',range:'7-18 kts TWS',min:7,max:18,bc:'cb-med',sail:'.6oz Spin',note:'Primary reaching sail 7-18 kts per the manual'},
+  {lbl:'Heavy',range:'19-22 kts TWS',min:19,max:22,bc:'cb-breeze',sail:'A-sail only if TWA >120 deg -- else white sails',note:'Manual: no .6oz above 18 kts'},
+  {lbl:'Survival',range:'23+ kts TWS',min:23,max:99,bc:'cb-surv',sail:'White sails -- #3/#4, reef as needed',note:'No kite -- keep it under the deck'},
+];
+const RUN_BANDS=[
+  {lbl:'Light air',range:'0-6 kts TWS',min:0,max:6,bc:'cb-light',sail:'A-sail',note:'Heat it up -- hot angles keep the kite flying'},
+  {lbl:'Spin range',range:'7-18 kts TWS',min:7,max:18,bc:'cb-med',sail:'.6oz Spin',note:'Primary running sail 7-18 kts per the manual'},
+  {lbl:'Heavy',range:'19-22 kts TWS',min:19,max:22,bc:'cb-breeze',sail:'A-sail (TWA >120 deg on a run)',note:'Manual: .6oz comes down above 18 kts'},
+  {lbl:'Survival',range:'23+ kts TWS',min:23,max:99,bc:'cb-surv',sail:'White sails -- deep reach under #3/#4',note:'No kite -- gybe with extreme care'},
 ];
 const TRIM_RULES=[
   {t:'Upwind depower sequence',b:'Backstay, then traveler down, then outhaul out, then checkstays on, then mainsheet last'},
@@ -750,21 +782,52 @@ function updateUpwind(){
   const b=UPWIND_BANDS.find(x=>tws>=x.min&&tws<=x.max)||UPWIND_BANDS[UPWIND_BANDS.length-1];
   document.getElementById('up-badge').innerHTML='<div class="cond-badge '+b.bc+'" style="margin-top:10px"><i class="ti ti-wind" style="font-size:14px" aria-hidden="true"></i> '+b.lbl+' · '+b.range+'</div>';
   const p=interpPolar(tws);
-  document.getElementById('up-polar').innerHTML=tws>=6?polarHTML(p,'up'):'';
+  document.getElementById('up-polar').innerHTML=tws>=6?polarHTML(p,'up')+polarCapNote(tws):'';
   const rows=[['Sail',b.sail],['Backstay',b.backs],['Running backs',b.runbacks],['Checkstays',b.checks],['Traveler',b.trav],['Outhaul',b.out],['Mainsheet',b.main]];
   document.getElementById('up-settings').innerHTML='<div class="sb"><div class="sb-hdr">Controls</div>'+rows.map(function(r){return '<div class="sr"><span class="sr-lbl">'+r[0]+'</span><span class="sr-val">'+r[1]+'</span></div>';}).join('')+'</div><div class="goal-box"><div class="goal-lbl">Goal</div><div class="goal-txt">'+b.goal+'</div></div><p class="sec-lbl" style="margin-top:4px">Key rules &amp; notes</p>'+TRIM_RULES.map(function(r){return '<div class="rule-card"><div class="rule-title">'+r.t+'</div><div class="rule-body">'+r.b+'</div></div>';}).join('');
+}
+
+function condBadgeHTML(b){
+  return '<div class="cond-badge '+b.bc+'" style="margin-top:10px"><i class="ti ti-wind" style="font-size:14px" aria-hidden="true"></i> '+b.lbl+' · '+b.range+'</div>';
+}
+function sailBoxHTML(tws,b){
+  return '<div class="goal-box"><div class="goal-lbl">Sail at '+tws+' kts</div><div class="goal-txt">'+b.sail+'</div>'+
+    (b.note?'<div style="font-size:12px;color:var(--t600);margin-top:3px">'+b.note+'</div>':'')+'</div>';
+}
+/* The ORC cert only covers 6-20 kts TWS — flag when targets are clamped */
+function polarCapNote(tws){
+  return tws>20?'<div style="font-size:11px;color:var(--color-text-secondary);margin:-6px 0 12px;text-align:center">ORC polar ends at 20 kts — showing 20 kt targets</div>':'';
 }
 
 function updateReach(){
   const tws=parseInt(document.getElementById('reach-slider').value);
   document.getElementById('reach-tws').textContent=tws;
-  document.getElementById('reach-polar').innerHTML=polarHTML(interpPolar(tws),'reach');
+  const b=REACH_BANDS.find(x=>tws>=x.min&&tws<=x.max)||REACH_BANDS[REACH_BANDS.length-1];
+  document.getElementById('reach-badge').innerHTML=condBadgeHTML(b);
+  const p=interpPolar(tws);
+  document.getElementById('reach-polar').innerHTML=tws>=6?polarHTML(p,'reach')+polarCapNote(tws):'';
+  document.getElementById('reach-sail').innerHTML=sailBoxHTML(tws,b);
+  const gv=document.getElementById('reach-goal-val');
+  if(gv) gv.textContent='Gybe angles per polar — TWA ~'+Math.round(p.downTWA)+'°';
 }
 
 function updateRun(){
   const tws=parseInt(document.getElementById('run-slider').value);
   document.getElementById('run-tws').textContent=tws;
-  document.getElementById('run-polar').innerHTML=polarHTML(interpPolar(tws),'run');
+  const b=RUN_BANDS.find(x=>tws>=x.min&&tws<=x.max)||RUN_BANDS[RUN_BANDS.length-1];
+  document.getElementById('run-badge').innerHTML=condBadgeHTML(b);
+  const p=interpPolar(tws);
+  document.getElementById('run-polar').innerHTML=tws>=6?polarHTML(p,'run')+polarCapNote(tws):'';
+  document.getElementById('run-sail').innerHTML=sailBoxHTML(tws,b);
+  /* The ORC polar wants hot angles in light air but a near-square run in
+     breeze — the goal has to follow the polar, not a fixed slogan */
+  const gv=document.getElementById('run-goal-val');
+  if(gv){
+    var a=Math.round(p.downTWA);
+    gv.textContent=p.downTWA<160?'Hot angles — TWA ~'+a+'°, don’t dead run':
+                   p.downTWA<172?'Deeper now — polar TWA ~'+a+'°':
+                   'Run deep — polar wants TWA '+a+'° (near square)';
+  }
 }
 
 function setTrimMode(m){
@@ -776,7 +839,7 @@ function setTrimMode(m){
   if(m==='run') updateRun();
 }
 
-function renderAll(){updateUpwind();updateDashConditions();}
+function renderAll(){updateUpwind();updateReach();updateRun();updateDashConditions();}
 
 /* Rolling 60-second wind average for trim sliders */
 var windAvgBuf=[];
@@ -817,10 +880,10 @@ function syncTrimToWind(){
   us.value=Math.min(32,Math.max(0,w));
   updateUpwind();
   var rs=document.getElementById('reach-slider');
-  rs.value=Math.min(20,Math.max(6,w));
+  rs.value=Math.min(32,Math.max(0,w));
   updateReach();
   var rns=document.getElementById('run-slider');
-  rns.value=Math.min(20,Math.max(6,w));
+  rns.value=Math.min(32,Math.max(0,w));
   updateRun();
 }
 function showTab(id){
@@ -1210,6 +1273,9 @@ function updateSKStatusCard(){
     html+='<div class="sk-live-cell"><div class="sk-live-val">'+fmt(skState.heelDeg,'°',1)+'</div><div class="sk-live-lbl">Heel</div></div>';
     html+='<div class="sk-live-cell"><div class="sk-live-val">'+fmt(skState.depthFt,'ft',1)+'</div><div class="sk-live-lbl">Depth</div></div>';
     html+='</div>';
+    if(_skPut401Shown){
+      html+='<div style="font-size:11px;color:var(--a400);margin-top:6px;padding:4px 0">Note: SignalK rejected course writes (401). Enable unauthenticated PUT in SK settings.</div>';
+    }
   }
   el.innerHTML=html;
 }
@@ -2383,7 +2449,7 @@ function renderWindHistory(){
     var avgPct=Math.round((s.avg/s.gust)*100);
     html+='<div class="polar-box" style="margin-bottom:12px">';
     html+='<div class="polar-stats" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:10px">';
-    html+='<div class="polar-stat"><div class="polar-stat-val" style="color:var(--b600)">'+s.lull.toFixed(1)+'</div><div class="polar-stat-lbl">Lull kts</div></div>';
+    html+='<div class="polar-stat"><div class="polar-stat-val" style="color:var(--b400)">'+s.lull.toFixed(1)+'</div><div class="polar-stat-lbl">Lull kts</div></div>';
     html+='<div class="polar-stat" style="background:var(--t100)"><div class="polar-stat-val">'+s.avg.toFixed(1)+'</div><div class="polar-stat-lbl">Avg kts</div></div>';
     html+='<div class="polar-stat"><div class="polar-stat-val" style="color:var(--c400)">'+s.gust.toFixed(1)+'</div><div class="polar-stat-lbl">Gust kts</div></div>';
     html+='</div>';
@@ -3006,13 +3072,9 @@ function sendNextMarkToSK(){
       if(r.status==='fulfilled'&&r.value.status===401&&!_skPut401Shown){
         _skPut401Shown=true;
         console.warn('SignalK PUT 401 — unauthenticated writes may be disabled');
-        var skCard=document.getElementById('sk-card');
-        if(skCard){
-          var note=document.createElement('div');
-          note.style.cssText='font-size:11px;color:var(--a400);margin-top:6px;padding:4px 0';
-          note.textContent='Note: SignalK rejected course writes (401). Enable unauthenticated PUT in SK settings.';
-          skCard.appendChild(note);
-        }
+        /* Rendered by updateSKStatusCard — appending a node here would be
+           wiped by its next innerHTML rebuild */
+        updateSKStatusCard();
       } else if(r.status==='rejected'){
         console.warn('SignalK PUT failed:',r.reason);
       }
