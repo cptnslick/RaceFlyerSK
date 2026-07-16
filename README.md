@@ -73,7 +73,12 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 
 ## Boat
 
-Oyster SJ35 — polar data from ORC certificate.
+Oyster SJ35 "Flyer" (Sail# USA-25126) — polar targets transcribed from the
+boat's ORC 2023 Speed Guide. Upwind and downwind figures are the certificate's
+"BestPerf" beat/run VMG optima; reach figures are BestPerf boat speed at 90°
+(beam) and 120° (broad). Per the certificate's separate headsail/spinnaker
+targets, the symmetric spinnaker only outperforms the headsail at TWA ~110°
+and deeper — surfaced in the Reaching tab as the spinnaker crossover.
 
 ## Area
 
