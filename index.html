@@ -114,16 +114,16 @@ html,body{
   /* Bleed edge-to-edge over safe-area padding, then re-add as inner padding */
   margin-left:calc(-1 * env(safe-area-inset-left));
   margin-right:calc(-1 * env(safe-area-inset-right));
-  padding:calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left));
+  padding:calc(7px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 7px calc(16px + env(safe-area-inset-left));
   display:flex;
-  align-items:center;
-  justify-content:space-between;
+  align-items:baseline;
+  gap:8px;
   position:sticky;
   top:0;
   z-index:10;
 }
-.top-bar-title{font-size:20px;font-weight:600}
-.top-subtitle{font-size:12px;opacity:.8;margin-top:2px}
+.top-bar-title{font-size:16px;font-weight:600;line-height:1.1}
+.top-subtitle{font-size:11px;opacity:.8}
 .nav-tabs{
   display:flex;
   background:var(--color-background-primary);
@@ -131,7 +131,7 @@ html,body{
   overflow-x:auto;
   scrollbar-width:none;
   position:sticky;
-  top:calc(56px + env(safe-area-inset-top));
+  top:calc(32px + env(safe-area-inset-top));
   z-index:9;
   /* Bleed edge-to-edge, pad content inward */
   margin-left:calc(-1 * env(safe-area-inset-left));
@@ -501,13 +501,13 @@ html[data-theme=light] .hcell.hon{background:#fff}
   .top-bar{padding-top:calc(6px + env(safe-area-inset-top));padding-bottom:6px}
   .top-bar-title{font-size:17px}
   .top-subtitle{display:none}
-  .nav-tabs{top:calc(40px + env(safe-area-inset-top))}
+  .nav-tabs{top:calc(32px + env(safe-area-inset-top))}
   .nav-tab{padding:8px 14px;min-height:36px;font-size:12px}
   /* NPSA tab fills remaining viewport height */
   #tab-npsa.screen.active{
     padding:8px 10px 0;
     display:flex;flex-direction:column;
-    height:calc(100dvh - 40px - env(safe-area-inset-top) - 36px);
+    height:calc(100dvh - 32px - env(safe-area-inset-top) - 36px);
     overflow:hidden
   }
   .npsa-header{display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;flex-shrink:0}
@@ -535,8 +535,8 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
 <body>
 <div id="app">
   <div class="top-bar">
-    <div><div class="top-bar-title">Flyer</div><div class="top-subtitle">Oyster SJ35 &middot; Race Management</div></div>
-    <div style="text-align:right;font-size:12px;opacity:.8" id="top-date"></div>
+    <div class="top-bar-title">Flyer</div>
+    <div class="top-subtitle">Oyster SJ35 &middot; Race Management</div>
   </div>
   <div class="nav-tabs">
     <button class="nav-tab active" data-tab="dash" onclick="showTab('dash')"><i class="ti ti-layout-dashboard" aria-hidden="true"></i> Overview</button>
@@ -567,7 +567,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.1</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.2</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -1840,7 +1840,6 @@ function updateThemeSeg(){
 }
 updateThemeSeg();
 
-document.getElementById('top-date').textContent=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'});
 renderAll();
 initSK();
 
