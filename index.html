@@ -534,7 +534,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.3.2</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.4.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -642,6 +642,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <div class="npsa-header">
     <select class="npsa-course-sel" id="npsa-club-sel" onchange="setNpsaClub(this.value)" style="margin-bottom:8px">
       <option value="npsa">NPSA · North Point</option>
+      <option value="npsa3">NPSA · Series 3</option>
       <option value="rcra">RCRA · Rock Creek</option>
     </select>
     <div class="npsa-seg" id="npsa-class-seg">
@@ -2024,6 +2025,62 @@ var COURSES={
     nspin:{marks:['START','BC14','PW6','FINISH'], rounds:[null,'S','P',null], dist:4.31}}
 };
 
+/* ── NPSA Series 3 (Joint Series) courses A–N ───────────────────
+ * Source: "SERIES 3 - NPSA COURSES FOR JOINT SERIES" sheet + the NPSA
+ * Mark Locations / Distance Matrix (user, 2026-07). Every course starts
+ * and finishes at PW-6, so PW6 is the start/finish (rounds=null) rather
+ * than a separate START key. Marks reuse the shared MARKS table — verified
+ * against the official lat/lon sheet to <0.5 m; the 26 of 29 course lengths
+ * that are pure straight-line legs match the sheet to ≤0.01 nm. `dist` is
+ * NPSA's published length: a few legs (CHU26→PW12, BC6→BC2B) are quoted as
+ * navigable distances routed around shoals, so they exceed the straight-line
+ * measure the app draws — expected, not a coordinate error.
+ * Rounding column applies to every rounding mark in the course. */
+var NPSA_S3_COURSES={
+  A:{wind:'N',windDeg:0,
+    spin: {marks:['PW6','PW12','BC2B','PW6'], rounds:[null,'S','S',null], dist:4.59},
+    nspin:{marks:['PW6','PW12','BC4','PW6'],  rounds:[null,'S','S',null], dist:3.56}},
+  B:{wind:'N',windDeg:0,
+    spin: {marks:['PW6','PW12','BC4','BC6','PW6'], rounds:[null,'S','S','S',null], dist:3.67},
+    nspin:{marks:['PW6','PW12','BC4','BC6','PW6'], rounds:[null,'S','S','S',null], dist:3.67}},
+  C:{wind:'N',windDeg:0,
+    spin: {marks:['PW6','PW12','BC6','PW12','BC4','PW6'], rounds:[null,'S','S','S','S',null], dist:6.34},
+    nspin:{marks:['PW6','PW12','BC6','PW12','BC4','PW6'], rounds:[null,'S','S','S','S',null], dist:6.34}},
+  D:{wind:'E',windDeg:90,
+    spin: {marks:['PW6','CRAIGHILL','PW6'], rounds:[null,'S',null], dist:5.94},
+    nspin:{marks:['PW6','CRAIGHILL','PW6'], rounds:[null,'S',null], dist:5.94}},
+  E:{wind:'E',windDeg:90,
+    spin: {marks:['PW6','BC6','BC8','PW8','PW6'], rounds:[null,'S','S','S',null], dist:3.22},
+    nspin:{marks:['PW6','BC6','BC8','PW8','PW6'], rounds:[null,'S','S','S',null], dist:3.22}},
+  F:{wind:'SE',windDeg:135,
+    spin: {marks:['PW6','BC2B','BC14','PW6'], rounds:[null,'S','S',null], dist:6.90},
+    nspin:{marks:['PW6','BC4','BC14','PW6'],  rounds:[null,'S','S',null], dist:5.74}},
+  G:{wind:'SE',windDeg:135,
+    spin: {marks:['PW6','CHU26','PW12','PW6'], rounds:[null,'P','P',null], dist:5.84},
+    nspin:{marks:['PW6','BC2B','PW12','PW6'],  rounds:[null,'P','P',null], dist:4.59}},
+  H:{wind:'SE',windDeg:135,
+    spin: {marks:['PW6','BC2B','PW6'], rounds:[null,'P',null], dist:3.02},
+    nspin:{marks:['PW6','BC2B','PW6'], rounds:[null,'P',null], dist:3.02}},
+  I:{wind:'S',windDeg:180,
+    spin: {marks:['PW6','BC4','PW12','BC4','PW12','PW6'], rounds:[null,'P','P','P','P',null], dist:7.00},
+    nspin:{marks:['PW6','BC6','PW12','BC6','PW12','PW6'], rounds:[null,'P','P','P','P',null], dist:5.56}},
+  J:{wind:'S',windDeg:180,
+    spin: {marks:['PW6','BC4','BC6','PW12','PW6'], rounds:[null,'S','S','S',null], dist:3.79},
+    nspin:{marks:['PW6','BC4','BC6','PW12','PW6'], rounds:[null,'S','S','S',null], dist:3.79}},
+  K:{wind:'S',windDeg:180,
+    spin: {marks:['PW6','BC6','CHU26','PW12','PW6'], rounds:[null,'P','P','P',null], dist:5.94},
+    nspin:{marks:['PW6','BC6','BC2B','PW12','PW6'],  rounds:[null,'P','P','P',null], dist:5.18}},
+  L:{wind:'W',windDeg:270,
+    spin: {marks:['PW6','BC12','BC4','PW6'], rounds:[null,'P','P',null], dist:5.24},
+    nspin:{marks:['PW6','BC8','BC4','PW6'],  rounds:[null,'P','P',null], dist:3.77}},
+  M:{wind:'W',windDeg:270,
+    spin: {marks:['PW6','BC14','BC4','PW12','PW6'], rounds:[null,'P','P','P',null], dist:7.40},
+    nspin:{marks:['PW6','BC12','BC4','PW12','PW6'], rounds:[null,'P','P','P',null], dist:6.90}},
+  N:{wind:'W',windDeg:270,
+    spin: {marks:['PW6','BC14','PW8','PW6'], rounds:[null,'S','S',null], dist:4.31},
+    nspin:{marks:['PW6','BC14','PW8','PW6'], rounds:[null,'S','S',null], dist:4.31}}
+};
+
 /* ── RCRA (Rock Creek Racing Association) data ──────────────────
  * Source: RCRA course sheet image provided by user (2026-05).
  * Marks and courses transcribed by hand — verify against current SIs
@@ -2088,9 +2145,10 @@ var RCRA_COURSES={
 
 var npsaClub=localStorage.getItem('npsa_club')||'npsa'; /* 'npsa' | 'rcra' */
 
+/* npsa3 (Series 3) reuses the NPSA marks/names — only the course set differs */
 function getActiveMarks()    { return npsaClub==='rcra'?RCRA_MARKS:MARKS; }
 function getActiveMarkNames(){ return npsaClub==='rcra'?RCRA_MARK_NAMES:MARK_NAMES; }
-function getActiveCourses()  { return npsaClub==='rcra'?RCRA_COURSES:COURSES; }
+function getActiveCourses()  { return npsaClub==='rcra'?RCRA_COURSES:npsaClub==='npsa3'?NPSA_S3_COURSES:COURSES; }
 function getMarkFallback()   { return npsaClub==='rcra'?[39.190,-76.490]:[39.20083,-76.45898]; }
 
 function setNpsaClub(club){

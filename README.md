@@ -17,7 +17,9 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 
 ### Course Chart
 - Interactive Leaflet map with OpenSeaMap overlays
-- All NPSA courses (A–T) with spinnaker and non-spin variants
+- Three selectable course sets: NPSA North Point (A–T), NPSA Series 3 /
+  Joint Series (A–N, start/finish at PW-6), and RCRA Rock Creek
+- All courses with spinnaker and non-spin variants
 - Course lines with bearing and distance labels
 - Color-coded mark circles (port = red, starboard = green)
 - Active next-mark highlighted with a larger circle and dashed ring
