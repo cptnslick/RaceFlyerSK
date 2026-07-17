@@ -451,12 +451,13 @@ html[data-theme=light] .hcell.hon{background:#fff}
 .npsa-course-sel{width:100%;font-size:16px;border-radius:var(--border-radius-md);border:1px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);padding:11px 36px 11px 12px;appearance:none;-webkit-appearance:none;font-family:var(--font-sans);margin-bottom:10px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2371717a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 12px center}
-.npsa-marks-list{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.7;color:var(--color-text-primary)}
+/* Club/series + course selectors share one row (club left, course right) */
+.npsa-sel-row{display:flex;gap:8px;margin-bottom:8px}
+.npsa-sel-row .npsa-course-sel{flex:1;min-width:0;margin-bottom:0}
 .npsa-mark-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;margin:0 2px}
 .npsa-mark-port{background:#fee2e2;color:#991b1b}
 .npsa-mark-stbd{background:#dcfce7;color:#166534}
 .npsa-mark-start{background:var(--b50);color:var(--b800)}
-.npsa-wind-info{font-size:12px;color:var(--color-text-secondary);margin-top:4px}
 #npsa-map{height:58vh;border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:10px;border:0.5px solid var(--color-border-tertiary)}
 .npsa-leg-label{background:rgba(255,255,255,0.88);border:1px solid #ccc;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:600;color:#1a1a1a;white-space:nowrap;pointer-events:none}
 .npsa-wind-arrow{background:rgba(255,255,255,0.9);border:1.5px solid #0ea5e9;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:700;color:#0369a1;display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -512,8 +513,8 @@ html[data-theme=light] .hcell.hon{background:#fff}
   }
   .npsa-header{display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;flex-shrink:0}
   .npsa-header .npsa-seg{margin-bottom:0;flex-shrink:0;width:auto}
+  .npsa-header .npsa-sel-row{flex:1;margin-bottom:0}
   .npsa-header .npsa-course-sel{flex:1;margin-bottom:0}
-  #npsa-marks-text{display:none}
   #npsa-map{flex:1;height:auto !important;margin-bottom:0}
   /* trim: side-by-side polar + settings on wide landscape */
   .wind-zone{padding:10px 0 12px}
@@ -567,7 +568,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.2</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.4</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -673,22 +674,23 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
   <!-- COURSES -->
   <div id="tab-npsa" class="screen">
     <div class="npsa-header">
-    <select class="npsa-course-sel" id="npsa-club-sel" onchange="setNpsaClub(this.value)" style="margin-bottom:8px">
-      <option value="npsa">NPSA · North Point</option>
-      <option value="npsa3">NPSA · Series 3</option>
-      <option value="rcra">RCRA · Rock Creek</option>
-    </select>
+    <div class="npsa-sel-row">
+      <select class="npsa-course-sel" id="npsa-club-sel" onchange="setNpsaClub(this.value)">
+        <option value="npsa">NPSA · North Point</option>
+        <option value="npsa3">NPSA · Series 3</option>
+        <option value="rcra">RCRA · Rock Creek</option>
+      </select>
+      <select class="npsa-course-sel" id="npsa-course-sel" onchange="selectCourse(this.value)">
+        <option value="">Select course…</option>
+      </select>
+    </div>
     <div class="npsa-seg" id="npsa-class-seg">
       <button class="npsa-seg-btn active" id="nsb-spin" onclick="setNpsaClass('spin')"><i class="ti ti-wind" aria-hidden="true"></i> Spinnaker</button>
       <button class="npsa-seg-btn" id="nsb-nspin" onclick="setNpsaClass('nspin')"><i class="ti ti-triangle" aria-hidden="true"></i> Non-Spin</button>
     </div>
-    <select class="npsa-course-sel" id="npsa-course-sel" onchange="selectCourse(this.value)">
-      <option value="">— Select a course —</option>
-    </select>
     </div><!-- /.npsa-header -->
-    <div id="npsa-marks-text"></div>
+    <div id="npsa-next-mark" style="margin-bottom:12px"></div>
     <div id="npsa-map"></div>
-    <div id="npsa-next-mark" style="margin-top:12px"></div>
   </div>
 
   <!-- RACE -->
@@ -2199,7 +2201,6 @@ function setNpsaClub(club){
   raceState.legIdx=1;
   populateCourseDropdown();
   if(npsaLayerGroup) npsaLayerGroup.clearLayers();
-  document.getElementById('npsa-marks-text').innerHTML='';
   document.getElementById('npsa-next-mark').innerHTML='';
   if(npsaMap) npsaMap.setView(club==='rcra'?[39.190,-76.490]:[39.193,-76.458],12);
   if(raceState.courseId) selectCourse(raceState.courseId);
@@ -2210,7 +2211,7 @@ function populateCourseDropdown(){
   var sel=document.getElementById('npsa-course-sel');
   if(!sel) return;
   var courses=getActiveCourses();
-  var html='<option value="">— Select a course —</option>';
+  var html='<option value="">Select course…</option>';
   Object.keys(courses).forEach(function(id){
     var c=courses[id];
     html+='<option value="'+id+'">'+id+'  · '+c.wind+' wind · '+(c.desc||'')+'</option>';
@@ -2295,7 +2296,6 @@ function selectCourse(id,noFit){
   var activeCourses=getActiveCourses();
   var aMarks=getActiveMarks(), aNames=getActiveMarkNames();
   if(!id||!activeCourses[id]) {
-    document.getElementById('npsa-marks-text').innerHTML='';
     document.getElementById('npsa-next-mark').innerHTML='';
     return;
   }
@@ -2305,32 +2305,10 @@ function selectCourse(id,noFit){
   var marks=variant.marks;
   var rounds=variant.rounds;
 
-  /* ── Marks text summary ── */
-  var html='<div class="npsa-marks-list">';
-  html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
-  html+='<span style="font-weight:600;font-size:14px;color:var(--color-text-primary)">Course '+id+'</span>';
-  html+='<span style="font-size:12px;color:var(--color-text-secondary)">'+course.wind+' wind &nbsp;·&nbsp; '+variant.dist.toFixed(2)+' nm</span>';
-  html+='</div>';
-  if(variant.startNote) html+='<div style="font-size:12px;color:var(--a400);margin-bottom:6px;font-weight:500">⚓ '+variant.startNote+'</div>';
-  html+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;line-height:2">';
-  marks.forEach(function(m,i){
-    var r=rounds[i];
-    var name=aNames[m]||m;
-    if(r===null){
-      html+='<span class="npsa-mark-tag npsa-mark-start">'+name+'</span>';
-    } else if(r==='P'){
-      html+='<span class="npsa-mark-tag npsa-mark-port">⬤ '+name+' (Port)</span>';
-    } else {
-      html+='<span class="npsa-mark-tag npsa-mark-stbd">⬤ '+name+' (Stbd)</span>';
-    }
-    if(i<marks.length-1) html+='<span style="color:var(--color-text-secondary);font-size:12px">→</span>';
-  });
-  html+='</div>';
-  html+='<div class="npsa-wind-info">Wind from '+course.wind+' &nbsp;·&nbsp; All roundings '+(npsaClass==='spin'?'Spinnaker':'Non-Spin')+'</div>';
-  html+='</div>';
-  document.getElementById('npsa-marks-text').innerHTML=html;
+  /* Course order + next-mark summary now render in the shared card above the
+     map (renderNpsaNextMark → nextMarkCardHTML), called at the end. */
 
-  if(!npsaMap||!npsaLayerGroup) return;
+  if(!npsaMap||!npsaLayerGroup){ renderNpsaNextMark(); return; }
 
   /* ── Clear old course layers ── */
   npsaLayerGroup.clearLayers();
@@ -2810,6 +2788,73 @@ function raceAdvanceLeg(delta){
   refreshEinkUI();
 }
 
+/* Compact next-mark card — course/leg/GPS + arrows, mark trail, a big
+   rounding-coloured bearing, and Distance · ETA · VMG. Shared by the Race
+   tab and the Courses tab so the two never drift apart. Returns '' if no
+   course is selected; both callers handle that case. */
+function nextMarkCardHTML(){
+  var v=getRaceVariant();
+  if(!v) return '';
+  var marks=v.marks,rounds=v.rounds;
+  var idx=Math.min(raceState.legIdx,marks.length-1);
+  var markId=marks[idx],rounding=rounds[idx];
+  var markName=getActiveMarkNames()[markId]||markId;
+  var markPos=getActiveMarks()[markId];
+  var cog=skState.cogDeg;
+  var mkColor=rounding===null?'var(--b800)':rounding==='P'?'#dc2626':'#16a34a';
+  var mkBg=rounding===null?'var(--b50)':rounding==='P'?'#fee2e2':'#dcfce7';
+  var mkBorder=rounding===null?'var(--b100)':rounding==='P'?'#fca5a5':'#86efac';
+  var mkTxt=rounding===null?'Start / Finish':rounding==='P'?'Round to Port':'Round to Starboard';
+  var posLat=getEffectiveLat(),posLon=getEffectiveLon();
+  var gpsTag=posLat==null?'<span style="color:var(--color-text-secondary)">no GPS</span>'
+    :usingPhoneGPS()?'<span style="color:#7c3aed;font-weight:600">📱 Phone</span>'
+    :'<span style="color:var(--t600);font-weight:600">⚓ Signal K</span>';
+  var navBtns='<button onclick="raceAdvanceLeg(-1)" style="padding:5px 13px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">◀</button>'
+    +'<button onclick="raceAdvanceLeg(1)" style="padding:5px 13px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">▶</button>';
+  var h='<div class="card" style="margin-bottom:10px">';
+  /* Header: course · leg · gps  +  nav arrows */
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">';
+  h+='<span style="font-size:13px;color:var(--color-text-secondary)">Course '+raceState.courseId+' · Leg '+idx+'/'+(marks.length-1)+' · '+gpsTag+'</span>';
+  h+='<div style="display:flex;gap:6px">'+navBtns+'</div>';
+  h+='</div>';
+  if(v.startNote) h+='<div style="font-size:12px;color:var(--a400);font-weight:500;margin-bottom:8px">⚓ '+v.startNote+'</div>';
+  /* Mark trail directly under the header */
+  h+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;line-height:1.9;margin-bottom:10px">';
+  marks.forEach(function(m,i){
+    var r=rounds[i],nm=getActiveMarkNames()[m]||m,isCur=i===idx,isPast=i<idx;
+    var cls=r===null?'npsa-mark-start':r==='P'?'npsa-mark-port':'npsa-mark-stbd';
+    h+='<span class="npsa-mark-tag '+cls+'" style="opacity:'+(isPast?'0.4':'1')+';'+(isCur?'outline:2px solid '+mkColor+';outline-offset:2px;':'')+'">'+nm+'</span>';
+    if(i<marks.length-1) h+='<span style="color:var(--color-text-secondary);font-size:11px">→</span>';
+  });
+  h+='</div>';
+  /* Highlighted box: mark name + rounding on the left, big bearing on the right */
+  var brg=(posLat!=null&&markPos)?bearingDeg([posLat,posLon],markPos):null;
+  h+='<div style="background:'+mkBg+';border:1px solid '+mkBorder+';border-radius:var(--border-radius-md);padding:11px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px">';
+  h+='<div><div style="font-size:20px;font-weight:700;color:'+mkColor+'">'+markName+'</div>';
+  h+='<div style="font-size:12px;font-weight:600;color:'+mkColor+';margin-top:2px;text-transform:uppercase;letter-spacing:.5px">'+mkTxt+'</div></div>';
+  h+='<div style="text-align:right"><div style="font-size:30px;font-weight:700;color:'+mkColor+';line-height:1;white-space:nowrap">'+(brg!=null?compass(brg)+' '+Math.round(brg)+'°':'--')+'</div>';
+  h+='<div style="font-size:11px;font-weight:600;color:'+mkColor+';opacity:.85;text-transform:uppercase;letter-spacing:.5px;margin-top:2px">Bearing</div></div>';
+  h+='</div>';
+  /* Distance · ETA · VMG on one line under the box */
+  h+='<div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:13px">';
+  if(posLat!=null&&markPos){
+    var dist=distNm([posLat,posLon],markPos);
+    var etaStr='--',vmgStr='--';
+    if(skState.sogKts!=null&&skState.sogKts>0.2){
+      var etaMins=Math.round(dist/skState.sogKts*60);
+      etaStr='~'+(etaMins<60?etaMins+' min':Math.floor(etaMins/60)+'h'+(etaMins%60?' '+etaMins%60+'m':''));
+    }
+    if(skState.sogKts!=null&&cog!=null&&brg!=null) vmgStr=(skState.sogKts*Math.cos((brg-cog)*Math.PI/180)).toFixed(1)+' kts';
+    h+='<span><span style="color:var(--color-text-secondary)">Dist</span> <strong>'+dist.toFixed(2)+' nm</strong></span>';
+    h+='<span><span style="color:var(--color-text-secondary)">ETA</span> '+etaStr+'</span>';
+    h+='<span><span style="color:var(--color-text-secondary)">VMG</span> '+vmgStr+'</span>';
+  } else {
+    h+='<span style="color:var(--color-text-secondary)">GPS position required for bearing &amp; distance</span>';
+  }
+  h+='</div></div>';
+  return h;
+}
+
 function renderRaceTab(){
   var el=document.getElementById('race-content');
   if(!el) return;
@@ -2880,10 +2925,9 @@ function renderRaceTab(){
       +'<i class="ti ti-wind" style="font-size:22px;display:block;margin-bottom:8px;opacity:.35"></i>Live wind data needed for polar headings</div>';
   }
 
-  /* ── 2. Next mark (compact) ── */
+  /* ── 2. Next mark (compact) — shared with the Courses tab ── */
   var nextHtml='';
-  var v=getRaceVariant();
-  if(!v){
+  if(!getRaceVariant()){
     nextHtml+='<div class="card" style="cursor:pointer;margin-bottom:10px" onclick="showTabById(\'npsa\');onShowNpsa()">';
     nextHtml+='<div style="display:flex;align-items:center;gap:10px">';
     nextHtml+='<i class="ti ti-map" style="font-size:20px;color:var(--b400);flex-shrink:0" aria-hidden="true"></i>';
@@ -2891,62 +2935,7 @@ function renderRaceTab(){
     nextHtml+='<i class="ti ti-chevron-right" style="margin-left:auto;color:var(--color-text-secondary);font-size:18px" aria-hidden="true"></i>';
     nextHtml+='</div></div>';
   } else {
-    var marks=v.marks,rounds=v.rounds;
-    var idx=Math.min(raceState.legIdx,marks.length-1);
-    var markId=marks[idx],rounding=rounds[idx];
-    var markName=getActiveMarkNames()[markId]||markId;
-    var markPos=getActiveMarks()[markId];
-    var mkColor=rounding===null?'var(--b800)':rounding==='P'?'#dc2626':'#16a34a';
-    var mkBg=rounding===null?'var(--b50)':rounding==='P'?'#fee2e2':'#dcfce7';
-    var mkBorder=rounding===null?'var(--b100)':rounding==='P'?'#fca5a5':'#86efac';
-    var mkTxt=rounding===null?'Start / Finish':rounding==='P'?'Round to Port':'Round to Starboard';
-    var posLat=getEffectiveLat(),posLon=getEffectiveLon();
-    var gpsTag=posLat==null?'<span style="color:var(--color-text-secondary)">no GPS</span>'
-      :usingPhoneGPS()?'<span style="color:#7c3aed;font-weight:600">📱 Phone</span>'
-      :'<span style="color:var(--t600);font-weight:600">⚓ Signal K</span>';
-    var navBtns='<button onclick="raceAdvanceLeg(-1)" style="padding:5px 13px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">◀</button>'
-      +'<button onclick="raceAdvanceLeg(1)" style="padding:5px 13px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">▶</button>';
-
-    nextHtml+='<div class="card" style="margin-bottom:10px">';
-    /* Header: course · leg · gps  +  nav arrows */
-    nextHtml+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">';
-    nextHtml+='<span style="font-size:13px;color:var(--color-text-secondary)">Course '+raceState.courseId+' · Leg '+idx+'/'+(marks.length-1)+' · '+gpsTag+'</span>';
-    nextHtml+='<div style="display:flex;gap:6px">'+navBtns+'</div>';
-    nextHtml+='</div>';
-    /* Mark trail directly under the header */
-    nextHtml+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;line-height:1.9;margin-bottom:10px">';
-    marks.forEach(function(m,i){
-      var r=rounds[i],nm=getActiveMarkNames()[m]||m,isCur=i===idx,isPast=i<idx;
-      var cls=r===null?'npsa-mark-start':r==='P'?'npsa-mark-port':'npsa-mark-stbd';
-      nextHtml+='<span class="npsa-mark-tag '+cls+'" style="opacity:'+(isPast?'0.4':'1')+';'+(isCur?'outline:2px solid '+mkColor+';outline-offset:2px;':'')+'">'+nm+'</span>';
-      if(i<marks.length-1) nextHtml+='<span style="color:var(--color-text-secondary);font-size:11px">→</span>';
-    });
-    nextHtml+='</div>';
-    /* Highlighted box: mark name + rounding on the left, big bearing on the right */
-    var brg=(posLat!=null&&markPos)?bearingDeg([posLat,posLon],markPos):null;
-    nextHtml+='<div style="background:'+mkBg+';border:1px solid '+mkBorder+';border-radius:var(--border-radius-md);padding:11px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px">';
-    nextHtml+='<div><div style="font-size:20px;font-weight:700;color:'+mkColor+'">'+markName+'</div>';
-    nextHtml+='<div style="font-size:12px;font-weight:600;color:'+mkColor+';margin-top:2px;text-transform:uppercase;letter-spacing:.5px">'+mkTxt+'</div></div>';
-    nextHtml+='<div style="text-align:right"><div style="font-size:30px;font-weight:700;color:'+mkColor+';line-height:1;white-space:nowrap">'+(brg!=null?compass(brg)+' '+Math.round(brg)+'°':'--')+'</div>';
-    nextHtml+='<div style="font-size:11px;font-weight:600;color:'+mkColor+';opacity:.85;text-transform:uppercase;letter-spacing:.5px;margin-top:2px">Bearing</div></div>';
-    nextHtml+='</div>';
-    /* Distance · ETA · VMG on one line under the box */
-    nextHtml+='<div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:13px">';
-    if(posLat!=null&&markPos){
-      var dist=distNm([posLat,posLon],markPos);
-      var etaStr='--',vmgStr='--';
-      if(skState.sogKts!=null&&skState.sogKts>0.2){
-        var etaMins=Math.round(dist/skState.sogKts*60);
-        etaStr='~'+(etaMins<60?etaMins+' min':Math.floor(etaMins/60)+'h'+(etaMins%60?' '+etaMins%60+'m':''));
-      }
-      if(skState.sogKts!=null&&cog!=null&&brg!=null) vmgStr=(skState.sogKts*Math.cos((brg-cog)*Math.PI/180)).toFixed(1)+' kts';
-      nextHtml+='<span><span style="color:var(--color-text-secondary)">Dist</span> <strong>'+dist.toFixed(2)+' nm</strong></span>';
-      nextHtml+='<span><span style="color:var(--color-text-secondary)">ETA</span> '+etaStr+'</span>';
-      nextHtml+='<span><span style="color:var(--color-text-secondary)">VMG</span> '+vmgStr+'</span>';
-    } else {
-      nextHtml+='<span style="color:var(--color-text-secondary)">GPS position required for bearing &amp; distance</span>';
-    }
-    nextHtml+='</div></div>';
+    nextHtml=nextMarkCardHTML();
   }
 
   /* ── 3. Wind (compact grid) ── */
@@ -3016,64 +3005,13 @@ function updateNpsaBoatMarker(){
   }
 }
 
-/* ── Next mark panel below course chart ─────────────────────── */
-/* Bearing / distance / ETA rows — shared by the Race tab and the Courses
-   next-mark card so the two can't drift apart (e.g. phone GPS handling) */
-function nextMarkRowsHTML(markPos,mkColor){
-  var posLat=getEffectiveLat(), posLon=getEffectiveLon();
-  if(posLat==null||posLon==null||!markPos){
-    return '<div style="font-size:13px;color:var(--color-text-secondary);padding:4px 0">GPS position required for bearing &amp; distance</div>';
-  }
-  var html='';
-  if(usingPhoneGPS()) html+='<div style="font-size:11px;font-weight:600;color:#7c3aed;margin-bottom:6px;letter-spacing:.3px">&#x1F4F1; Phone GPS</div>';
-  var cog=skState.cogDeg;
-  var brg=bearingDeg([posLat,posLon],markPos);
-  var dist=distNm([posLat,posLon],markPos);
-  var brgDiff=cog!=null?Math.round(((brg-cog+540)%360)-180):null;
-  var brgDiffStr=brgDiff==null?'':brgDiff===0?' · on course':brgDiff>0?' · +'+brgDiff+'° right':' · '+brgDiff+'° left';
-  html+='<div class="sr"><span class="sr-lbl">Bearing</span>';
-  html+='<span class="sr-val" style="font-size:15px;font-weight:700;color:'+mkColor+'">'+compass(brg)+' '+Math.round(brg)+'°';
-  if(brgDiffStr) html+='<span style="font-size:12px;font-weight:500;color:var(--color-text-secondary)">'+brgDiffStr+'</span>';
-  html+='</span></div>';
-  html+='<div class="sr"><span class="sr-lbl">Distance</span><span class="sr-val" style="font-weight:600">'+dist.toFixed(2)+' nm</span></div>';
-  if(skState.sogKts!=null&&skState.sogKts>0.2){
-    var etaMins=Math.round((dist/skState.sogKts)*60);
-    var etaStr=etaMins<60?etaMins+' min':Math.floor(etaMins/60)+'h'+(etaMins%60?' '+etaMins%60+'m':'');
-    html+='<div class="sr" style="border-bottom:none"><span class="sr-lbl">ETA</span><span class="sr-val">~'+etaStr+' at '+skState.sogKts.toFixed(1)+' kts SOG</span></div>';
-  } else {
-    html+='<div class="sr" style="border-bottom:none"><span class="sr-lbl">ETA</span><span class="sr-val" style="opacity:.4">--</span></div>';
-  }
-  return html;
-}
-
+/* ── Next mark panel above the course chart ─────────────────── */
 function renderNpsaNextMark(){
   var el=document.getElementById('npsa-next-mark');
   if(!el) return;
-  var v=getRaceVariant();
-  if(!v){el.innerHTML='';return;}
-  var marks=v.marks, rounds=v.rounds;
-  var idx=Math.min(raceState.legIdx,marks.length-1);
-  var markId=marks[idx], rounding=rounds[idx];
-  var markName=getActiveMarkNames()[markId]||markId;
-  var markPos=getActiveMarks()[markId];
-  var mkColor=rounding===null?'var(--b800)':rounding==='P'?'#dc2626':'#16a34a';
-  var mkBg=rounding===null?'var(--b50)':rounding==='P'?'#fee2e2':'#dcfce7';
-  var mkBorder=rounding===null?'var(--b100)':rounding==='P'?'#fca5a5':'#86efac';
-  var mkTxt=rounding===null?'Start / Finish':rounding==='P'?'Round to Port':'Round to Starboard';
-  var html='<p class="sec-lbl" style="margin-top:0">Next mark &nbsp;·&nbsp; Leg '+idx+'/'+(marks.length-1)+'</p>';
-  html+='<div class="card" style="margin-bottom:0">';
-  html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-  html+='<div style="background:'+mkBg+';border:1px solid '+mkBorder+';border-radius:var(--border-radius-md);padding:8px 12px;flex:1">';
-  html+='<div style="font-size:18px;font-weight:700;color:'+mkColor+'">'+markName+'</div>';
-  html+='<div style="font-size:11px;font-weight:600;color:'+mkColor+';margin-top:1px;text-transform:uppercase;letter-spacing:.5px">'+mkTxt+'</div>';
-  html+='</div>';
-  html+='<div style="display:flex;gap:5px;margin-left:10px">';
-  html+='<button onclick="raceAdvanceLeg(-1)" style="padding:5px 12px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">◀</button>';
-  html+='<button onclick="raceAdvanceLeg(1)" style="padding:5px 12px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">▶</button>';
-  html+='</div></div>';
-  html+=nextMarkRowsHTML(markPos,mkColor);
-  html+='</div>';
-  el.innerHTML=html;
+  /* Same compact card as the Race tab (course/leg/GPS, mark trail, bearing,
+     distance/ETA/VMG). Empty when no course is selected. */
+  el.innerHTML=nextMarkCardHTML();
 }
 
 /* Start phone GPS watcher immediately so position is ready when needed */
