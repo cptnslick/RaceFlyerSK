@@ -568,7 +568,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.4</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.6.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -2602,10 +2602,47 @@ function renderWindHistory(){
 var raceState={courseId:'',legIdx:1};
 
 /* ── Start timer ─────────────────────────────── */
-var timerState={running:false,endEpoch:null,durationMs:5*60*1000,soundOn:true,collapsed:false,_iv:null,_beeped:{},_initialK:null};
+/* Start sequences: RRS-style horn schedules keyed by seconds-remaining (k).
+   horn(k) returns a _timerPattern array (one entry per horn blast) or null.
+   '54100' is the classic 5-min sequence (RRS 26): warning at 5:00, prep at
+   4:00, one-minute at 1:00, start gun at 0. */
+var SEQUENCES={
+  '54100':{label:'5·4·1·0',durMs:5*60000,horn:function(k){
+    if(k===300||k===240) return [{d:1.0}];   /* warning + prep */
+    if(k===60)  return [{d:3.0}];             /* one-minute */
+    if(k>=1&&k<=10) return [{d:0.5}];         /* last 10 s */
+    if(k===0)   return [{d:1.5}];             /* start gun */
+    return null;
+  }},
+  '10min':{label:'10 min',durMs:10*60000,horn:function(k){
+    if(k===600||k===300) return [{d:1.0}];    /* 10-min warning + 5-min */
+    if(k===60)  return [{d:3.0}];
+    if(k>=1&&k<=10) return [{d:0.5}];
+    if(k===0)   return [{d:1.5}];
+    return null;
+  }}
+};
+var SEQ_ORDER=['54100','10min'];
+
+var timerState={
+  running:false, endEpoch:null,
+  seqId:(SEQUENCES[localStorage.getItem('timer_seq')]?localStorage.getItem('timer_seq'):'54100'),
+  durationMs:5*60000,
+  soundOn:localStorage.getItem('timer_sound')!=='0',
+  collapsed:false,
+  autoStart:false, startClock:'',
+  _iv:null,_autoIv:null,_beeped:{}
+};
+timerState.durationMs=SEQUENCES[timerState.seqId].durMs;
 
 function _timerACtx(){
-  if(!window._timerAudio) window._timerAudio=new(window.AudioContext||window.webkitAudioContext)();
+  if(!window._timerAudio){
+    window._timerAudio=new(window.AudioContext||window.webkitAudioContext)();
+    /* iOS 16.4+ / modern browsers: the 'playback' session category plays
+       through the media channel, so the horns still sound with the ringer /
+       mute switch on (silent or vibrate mode). No-op where unsupported. */
+    try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}
+  }
   return window._timerAudio;
 }
 document.addEventListener('visibilitychange',function(){
@@ -2635,33 +2672,7 @@ function _timerPattern(pats){
   if(!timerState.soundOn) return;
   pats.forEach(function(p){setTimeout(function(){_timerHorn(p.d,p.v);},p.t||0);});
 }
-function timerTick(){
-  var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):0;
-  var disp=document.getElementById('race-timer-disp');
-  if(disp){
-    var m=Math.floor(sec/60),s=Math.floor(sec%60);
-    disp.textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
-    disp.style.color=sec<=10?'var(--c400)':sec<=60?'#f59e0b':'';
-  }
-  var k=Math.ceil(sec);
-  /* Suppress the initial second's beep (otherwise pressing Start at 5:00 fires the minute-mark horn immediately) */
-  if(!timerState._beeped[k]&&k!==timerState._initialK){
-    timerState._beeped[k]=true;
-    if(k===0)        _timerPattern([{d:1.2,t:0},{d:1.2,t:1400},{d:2.5,t:2800}]);
-    else if(k<=10)   _timerPattern([{d:0.18}]);
-    else if(k===30)  _timerPattern([{d:0.4,t:0},{d:0.4,t:600}]);
-    else if(k%60===0)_timerPattern([{d:0.7}]);
-  }
-  if(sec<=0&&timerState.running){
-    timerState.running=false;
-    clearInterval(timerState._iv);timerState._iv=null;
-    releaseWakeLock();
-    /* Start gun fired — collapse the timer to a heading to free up space
-       for the tactical panels below (tap the heading to bring it back) */
-    timerState.collapsed=true;
-    renderRaceTimerPanel();
-  }
-}
+
 /* Keep the screen awake during the start sequence — backgrounded tabs get
    their timers throttled and the countdown horns are silently skipped */
 var _wakeLock=null;
@@ -2673,73 +2684,172 @@ function releaseWakeLock(){
   if(_wakeLock){try{_wakeLock.release();}catch(e){} _wakeLock=null;}
 }
 document.addEventListener('visibilitychange',function(){
-  /* the lock is auto-released when the page hides; re-acquire on return */
   if(!document.hidden&&timerState.running) acquireWakeLock();
 });
 
-function timerStart(){
-  if(timerState.running){
-    timerState.running=false;clearInterval(timerState._iv);timerState._iv=null;
-    releaseWakeLock();
-    var rb=document.getElementById('race-timer-btn');
-    if(rb){rb.innerHTML='<i class="ti ti-player-play" aria-hidden="true"></i> Start';rb.style.background='';rb.style.color='';}
-    return;
+function _fmt(sec){sec=Math.max(0,sec);var m=Math.floor(sec/60),s=Math.floor(sec%60);return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;}
+function _dispColor(sec){return sec<=10?'var(--c400)':sec<=60?'#f59e0b':'var(--color-text-primary)';}
+
+function timerTick(){
+  var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):0;
+  var disp=document.getElementById('race-timer-disp');
+  if(disp){disp.textContent=_fmt(sec);disp.style.color=_dispColor(sec);}
+  var k=Math.ceil(sec);
+  if(!timerState._beeped[k]){
+    timerState._beeped[k]=true;
+    var pat=SEQUENCES[timerState.seqId].horn(k);
+    if(pat) _timerPattern(pat);
   }
+  if(sec<=0&&timerState.running){
+    timerState.running=false;
+    if(timerState._iv){clearInterval(timerState._iv);timerState._iv=null;}
+    releaseWakeLock();
+    /* Start gun fired — collapse to a heading to free space (tap to restore) */
+    timerState.collapsed=true;
+    renderRaceTimerPanel(true);
+  }
+}
+
+/* Arm and run a countdown ending at endEpoch (wall-clock ms). Fires the horn
+   for the mark we start on — for a manual 5·4·1·0 start that's the 5:00
+   warning, "as soon as I tap Start". */
+function _beginCountdown(endEpoch){
   try{_timerACtx().resume();}catch(e){}
+  try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}
+  stopAutoMonitor();
   acquireWakeLock();
   timerState.running=true;
-  timerState.endEpoch=Date.now()+timerState.durationMs;
+  timerState.endEpoch=endEpoch;
   timerState._beeped={};
-  timerState._initialK=Math.ceil(timerState.durationMs/1000);
+  var k0=Math.ceil(Math.max(0,(endEpoch-Date.now())/1000));
+  timerState._beeped[k0]=true;
+  var pat=SEQUENCES[timerState.seqId].horn(k0);
+  if(pat) _timerPattern(pat);
   timerState._iv=setInterval(timerTick,250);
+  renderRaceTimerPanel(true);
   timerTick();
-  var rb=document.getElementById('race-timer-btn');
-  if(rb){rb.innerHTML='<i class="ti ti-player-pause" aria-hidden="true"></i> Stop';rb.style.background='var(--c400)';rb.style.color='#fff';}
+}
+function _stopCountdown(){
+  timerState.running=false;
+  if(timerState._iv){clearInterval(timerState._iv);timerState._iv=null;}
+  releaseWakeLock();
+  renderRaceTimerPanel(true);
+}
+function timerStart(){
+  if(timerState.running){_stopCountdown();return;}
+  _beginCountdown(Date.now()+SEQUENCES[timerState.seqId].durMs);
 }
 function timerReset(){
-  timerState.running=false;clearInterval(timerState._iv);timerState._iv=null;
+  if(timerState.running) return; /* locked while running — Stop first */
+  if(timerState._iv){clearInterval(timerState._iv);timerState._iv=null;}
   releaseWakeLock();
   timerState.endEpoch=null;timerState._beeped={};
-  var m=Math.floor(timerState.durationMs/60000);
-  var disp=document.getElementById('race-timer-disp');
-  if(disp){disp.textContent=(m<10?'0':'')+m+':00';disp.style.color='';}
-  var rb=document.getElementById('race-timer-btn');
-  if(rb){rb.innerHTML='<i class="ti ti-player-play" aria-hidden="true"></i> Start';rb.style.background='';rb.style.color='';}
+  renderRaceTimerPanel(true);
+  if(timerState.autoStart) startAutoMonitor();
 }
-function timerSetDuration(ms){
-  timerReset();timerState.durationMs=ms;
-  var m=Math.floor(ms/60000);
-  var disp=document.getElementById('race-timer-disp');
-  if(disp){disp.textContent=(m<10?'0':'')+m+':00';}
-  document.querySelectorAll('.timer-preset').forEach(function(b){
-    var active=parseInt(b.dataset.ms)===ms;
-    b.style.background=active?'var(--t600)':'';
-    b.style.color=active?'#fff':'var(--color-text-secondary)';
-    b.style.borderColor=active?'var(--t600)':'';
-  });
+function timerSetSeq(id){
+  if(!SEQUENCES[id]||timerState.running) return;
+  timerState.seqId=id;timerState.durationMs=SEQUENCES[id].durMs;
+  try{localStorage.setItem('timer_seq',id);}catch(e){}
+  timerState._beeped={};timerState.endEpoch=null;
+  renderRaceTimerPanel(true);
+  if(timerState.autoStart) startAutoMonitor();
+}
+/* Snap the remaining time to a whole minute (dir +1 up, -1 down) to trim a
+   few seconds of drift against the race committee's actual signals. */
+function timerSync(dir){
+  if(!timerState.running||!timerState.endEpoch) return;
+  var sec=Math.max(0,(timerState.endEpoch-Date.now())/1000);
+  var target=dir>0?Math.ceil(sec/60-1e-6)*60:Math.floor(sec/60+1e-6)*60;
+  if(Math.abs(target-sec)<0.5) return;
+  timerState.endEpoch+=Math.round((target-sec)*1000);
+  timerTick();
 }
 function timerToggleSound(){
   timerState.soundOn=!timerState.soundOn;
-  var btn=document.getElementById('race-timer-sound');
-  if(btn) btn.innerHTML='<i class="ti ti-'+(timerState.soundOn?'volume':'volume-off')+'" aria-hidden="true"></i>';
+  try{localStorage.setItem('timer_sound',timerState.soundOn?'1':'0');}catch(e){}
+  if(timerState.soundOn){try{_timerACtx().resume();}catch(e){}}
+  renderRaceTimerPanel(true);
+}
+function toggleTimerCollapse(){timerState.collapsed=!timerState.collapsed;renderRaceTimerPanel(true);}
+
+/* ── Auto-start at a wall-clock gun time ── */
+function _parseClock(v){
+  v=(v||'').trim();var digits=v.replace(/[^0-9]/g,'');var hhmm='';
+  if(/^\d{1,2}:\d{2}$/.test(v)) hhmm=v;
+  else if(digits.length===3) hhmm=digits.slice(0,1)+':'+digits.slice(1);
+  else if(digits.length===4) hhmm=digits.slice(0,2)+':'+digits.slice(2);
+  var m=/^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if(m&&+m[1]<=23&&+m[2]<=59) return (m[1].length<2?'0':'')+m[1]+':'+m[2];
+  return '';
+}
+function autoTarget(){
+  var m=/^(\d{2}):(\d{2})$/.exec(timerState.startClock||'');
+  if(!m) return null;
+  var d=new Date();d.setHours(+m[1],+m[2],0,0);return d.getTime();
+}
+function autoSubText(){
+  var t=autoTarget();
+  if(t==null) return 'Enter the gun time as 24-hour HH:MM';
+  var durMs=SEQUENCES[timerState.seqId].durMs,rem=t-Date.now(),g='Gun '+timerState.startClock+' — ';
+  if(timerState.running) return g+'sequence running';
+  if(rem<=0) return g+'time has passed today';
+  if(rem<=durMs) return g+'starting now';
+  var mins=Math.round((rem-durMs)/60000);
+  return g+'sequence starts in '+(mins>=60?Math.floor(mins/60)+'h '+(mins%60)+'m':mins+'m');
+}
+function _patchDisp(sec,dim){
+  var disp=document.getElementById('race-timer-disp');if(!disp) return;
+  disp.textContent=_fmt(sec);disp.style.color=dim?'var(--color-text-secondary)':'var(--color-text-primary)';
+}
+function autoMonitorTick(){
+  if(!timerState.autoStart||timerState.running) return;
+  var sub=document.getElementById('race-timer-auto-sub');if(sub) sub.textContent=autoSubText();
+  var t=autoTarget();if(t==null) return;
+  var durMs=SEQUENCES[timerState.seqId].durMs,rem=t-Date.now();
+  if(rem<=0){_patchDisp(0,true);return;}
+  if(rem<=durMs){_beginCountdown(t);return;}   /* entered the sequence window */
+  _patchDisp(rem/1000,false);                  /* still waiting — count down to the gun */
+}
+function startAutoMonitor(){
+  stopAutoMonitor();
+  if(!timerState.autoStart) return;
+  timerState._autoIv=setInterval(autoMonitorTick,1000);
+  autoMonitorTick();
+}
+function stopAutoMonitor(){if(timerState._autoIv){clearInterval(timerState._autoIv);timerState._autoIv=null;}}
+function timerToggleAuto(){
+  timerState.autoStart=!timerState.autoStart;
+  if(timerState.autoStart) startAutoMonitor(); else stopAutoMonitor();
+  renderRaceTimerPanel(true);
+}
+function timerSetClock(v){
+  timerState.startClock=_parseClock(v);
+  if(timerState.autoStart) startAutoMonitor();
+  renderRaceTimerPanel(true);
 }
 
-function toggleTimerCollapse(){
-  timerState.collapsed=!timerState.collapsed;
-  renderRaceTimerPanel();
+function _syncBtn(sign,onclick,enabled){
+  return '<button onclick="'+onclick+'" aria-label="sync '+(sign==='+'?'up':'down')+'"'+(enabled?'':' disabled')+' style="width:46px;height:46px;flex-shrink:0;border-radius:50%;border:1.5px solid '+(enabled?'var(--t400)':'var(--color-border-secondary)')+';background:'+(enabled?'var(--t50)':'none')+';color:'+(enabled?'var(--t600)':'var(--color-text-secondary)')+';font-size:24px;font-weight:600;line-height:1;cursor:'+(enabled?'pointer':'default')+';opacity:'+(enabled?'1':'0.4')+';font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">'+sign+'</button>';
+}
+function _toggle(on,onclick){
+  return '<button onclick="'+onclick+'" role="switch" aria-checked="'+(on?'true':'false')+'" aria-label="Auto-start toggle" style="position:relative;width:46px;height:26px;border-radius:99px;border:none;cursor:pointer;background:'+(on?'var(--t600)':'var(--color-border-secondary)')+';flex-shrink:0;-webkit-tap-highlight-color:transparent"><span style="position:absolute;top:3px;left:'+(on?'23px':'3px')+';width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s"></span></button>';
 }
 
-function renderRaceTimerPanel(){
+function renderRaceTimerPanel(force){
   var el=document.getElementById('race-timer-panel');
   if(!el) return;
-  /* Rebuild only on first build or when the collapsed state flips —
-     timerTick still patches #race-timer-disp in place between rebuilds */
-  var wantC=timerState.collapsed?'1':'0';
-  if(el.dataset.built==='1'&&el.dataset.collapsed===wantC) return;
-  var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):timerState.durationMs/1000;
-  var m=Math.floor(sec/60),s=Math.floor(sec%60);
-  var str=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
-  var clr=sec<=10?'color:var(--c400)':sec<=60?'color:#f59e0b':'';
+  /* Rebuild only when a state that changes the layout flips — timerTick and
+     the auto monitor patch #race-timer-disp in place between rebuilds. */
+  var sig=[timerState.running?1:0,timerState.collapsed?1:0,timerState.autoStart?1:0,timerState.seqId,timerState.soundOn?1:0].join('|');
+  if(!force&&el.dataset.built==='1'&&el.dataset.sig===sig) return;
+  var durMs=SEQUENCES[timerState.seqId].durMs;
+  var sec;
+  if(timerState.running&&timerState.endEpoch) sec=Math.max(0,(timerState.endEpoch-Date.now())/1000);
+  else if(timerState.autoStart&&autoTarget()!=null){var r=(autoTarget()-Date.now())/1000;sec=r>0?r:0;}
+  else sec=durMs/1000;
+  var str=_fmt(sec);
+  var clr='color:'+_dispColor(sec);
   /* Collapsed — a slim tappable heading that restores the full timer */
   if(timerState.collapsed){
     var hc='<div class="card" style="margin-bottom:14px;padding:0;overflow:hidden">';
@@ -2749,27 +2859,51 @@ function renderRaceTimerPanel(){
     hc+='<span id="race-timer-disp" style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;'+clr+'">'+str+'</span>';
     hc+='<i class="ti ti-chevron-down" style="color:var(--color-text-secondary);font-size:16px" aria-hidden="true"></i>';
     hc+='</span></button></div>';
-    el.innerHTML=hc;
-    el.dataset.built='1';el.dataset.collapsed='1';
-    return;
+    el.innerHTML=hc;el.dataset.built='1';el.dataset.sig=sig;return;
   }
-  var d5=timerState.durationMs===5*60000,d10=timerState.durationMs===10*60000;
+  var running=timerState.running;
   var h='<div class="card" style="margin-bottom:14px;padding:14px">';
+  /* header: collapse toggle + sound */
   h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
   h+='<button onclick="toggleTimerCollapse()" aria-label="Collapse start timer" style="display:flex;align-items:center;gap:5px;background:none;border:none;padding:0;cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent"><span class="sec-lbl" style="margin:0">Start timer</span><i class="ti ti-chevron-up" style="color:var(--color-text-secondary);font-size:14px" aria-hidden="true"></i></button>';
-  h+='<div style="display:flex;gap:5px;align-items:center">';
-  h+='<button class="timer-preset" data-ms="'+(5*60000)+'" onclick="timerSetDuration(5*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(d5?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(d5?'var(--t600)':'none')+';color:'+(d5?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">5m</button>';
-  h+='<button class="timer-preset" data-ms="'+(10*60000)+'" onclick="timerSetDuration(10*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(d10?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(d10?'var(--t600)':'none')+';color:'+(d10?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">10m</button>';
-  h+='<button id="race-timer-sound" onclick="timerToggleSound()" style="padding:3px 7px;border:1px solid var(--color-border-secondary);border-radius:6px;background:none;color:var(--color-text-secondary);cursor:pointer;font-size:15px;line-height:1.4;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent"><i class="ti ti-'+(timerState.soundOn?'volume':'volume-off')+'" aria-hidden="true"></i></button>';
-  h+='</div></div>';
-  h+='<div id="race-timer-disp" style="font-size:60px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:3px;text-align:center;margin:4px 0 12px;'+clr+'">'+str+'</div>';
+  h+='<button id="race-timer-sound" onclick="timerToggleSound()" aria-label="Toggle sound" style="padding:3px 7px;border:1px solid var(--color-border-secondary);border-radius:6px;background:none;color:var(--color-text-secondary);cursor:pointer;font-size:15px;line-height:1.4;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent"><i class="ti ti-'+(timerState.soundOn?'volume':'volume-off')+'" aria-hidden="true"></i></button>';
+  h+='</div>';
+  /* sequence selector */
+  h+='<div style="display:flex;gap:6px;margin-bottom:12px">';
+  SEQ_ORDER.forEach(function(id){
+    var active=timerState.seqId===id;
+    h+='<button onclick="timerSetSeq(\''+id+'\')"'+(running?' disabled':'')+' style="flex:1;padding:7px 4px;font-size:13px;font-weight:500;border:1px solid '+(active?'var(--t600)':'var(--color-border-secondary)')+';border-radius:var(--border-radius-md);background:'+(active?'var(--t600)':'none')+';color:'+(active?'#fff':'var(--color-text-secondary)')+';cursor:'+(running?'default':'pointer')+';opacity:'+(running&&!active?'0.45':'1')+';font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">'+SEQUENCES[id].label+'</button>';
+  });
+  h+='</div>';
+  /* time row: sync+ (left) · time · sync- (right) */
+  h+='<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:2px">';
+  h+=_syncBtn('+','timerSync(1)',running);
+  h+='<div id="race-timer-disp" style="font-size:54px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:2px;text-align:center;min-width:150px;'+clr+'">'+str+'</div>';
+  h+=_syncBtn('−','timerSync(-1)',running);
+  h+='</div>';
+  h+='<div style="text-align:center;font-size:10px;color:var(--color-text-secondary);margin:3px 0 12px;letter-spacing:.4px;text-transform:uppercase">Sync ± snaps to the whole minute</div>';
+  /* auto-start status line */
+  if(timerState.autoStart) h+='<div id="race-timer-auto-sub" style="text-align:center;font-size:12px;color:var(--color-text-secondary);margin-bottom:10px">'+autoSubText()+'</div>';
+  /* start / reset */
   h+='<div style="display:flex;gap:8px">';
-  h+='<button id="race-timer-btn" onclick="timerStart()" style="flex:1;padding:10px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:'+(timerState.running?'var(--c400)':'none')+';color:'+(timerState.running?'#fff':'var(--color-text-primary)')+';font-size:14px;font-weight:500;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent">';
-  h+=(timerState.running?'<i class="ti ti-player-pause" aria-hidden="true"></i> Stop':'<i class="ti ti-player-play" aria-hidden="true"></i> Start')+'</button>';
-  h+='<button onclick="timerReset()" style="padding:10px 18px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button>';
-  h+='</div></div>';
-  el.innerHTML=h;
-  el.dataset.built='1';el.dataset.collapsed='0';
+  h+='<button id="race-timer-btn" onclick="timerStart()" style="flex:1;padding:10px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:'+(running?'var(--c400)':'none')+';color:'+(running?'#fff':'var(--color-text-primary)')+';font-size:14px;font-weight:500;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent">'+(running?'<i class="ti ti-player-pause" aria-hidden="true"></i> Stop':'<i class="ti ti-player-play" aria-hidden="true"></i> Start')+'</button>';
+  h+='<button onclick="timerReset()"'+(running?' disabled':'')+' style="padding:10px 18px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:'+(running?'default':'pointer')+';opacity:'+(running?'0.4':'1')+';font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button>';
+  h+='</div>';
+  /* auto-start at gun time */
+  h+='<div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">';
+  h+='<span style="font-size:13px;color:var(--color-text-primary);font-weight:500">Auto-start at gun time</span>';
+  h+=_toggle(timerState.autoStart,'timerToggleAuto()');
+  h+='</div>';
+  if(timerState.autoStart){
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-top:9px">';
+    h+='<input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" value="'+timerState.startClock+'" onchange="timerSetClock(this.value)" aria-label="Gun time (24-hour)" style="width:96px;font-size:16px;text-align:center;border-radius:var(--border-radius-md);border:1px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);padding:8px 6px;font-family:var(--font-sans);font-variant-numeric:tabular-nums">';
+    h+='<span style="font-size:12px;color:var(--color-text-secondary);line-height:1.4">24-hour clock · the sequence arms itself; tap SYNC to trim</span>';
+    h+='</div>';
+  }
+  h+='</div>';
+  h+='</div>';
+  el.innerHTML=h;el.dataset.built='1';el.dataset.sig=sig;
 }
 
 function getRaceVariant(){
