@@ -28,9 +28,16 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 - Next mark panel below the chart with bearing, distance, ETA, and leg navigation
 
 ### Race Tactics
-- True wind speed & angle, COG, SOG
-- Optimal upwind/downwind VMG headings from the SJ35 ORC polar
-- Tack/gybe heading cells with deviation from current COG
+- Collapsible start timer — collapses to a heading when the gun fires (tap to restore)
+- Layout ordered timer → optimal headings → next mark → wind for at-a-glance racing
+- Optimal upwind/downwind VMG headings from the SJ35 ORC polar; the point of
+  sail in use is featured full-size (TWA <95° upwind, >105° downwind, with a
+  neutral band between to avoid flicker) and the other shown compact
+- Active tack/gybe cell (aligned with COG) highlighted, theme-aware in light & dark
+- Compact next-mark card: course/leg/GPS source, mark trail, large bearing in the
+  rounding-coloured box, and Distance · ETA · VMG on one line
+- Compact 3×2 wind grid (SOG/AWS/TWS · COG/AWA/TWA) that bolds the apparent pair
+  upwind and the true pair downwind
 - **Wind history** — lull / avg / gust over the last 10 minutes
 - **Wind shift analysis** — detects oscillating or trending conditions from the last 30 minutes of SK data, estimates amplitude, cycle period, current lift/header status, and time to next shift
 

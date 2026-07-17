@@ -387,6 +387,39 @@ html,body{
 .rule-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px;margin-bottom:8px}
 .rule-title{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
 .rule-body{font-size:13px;color:var(--color-text-secondary);line-height:1.6}
+/* ── Race tab compact wind grid + optimal-heading cells ───────── */
+.wind-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.wcell{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:9px 4px;text-align:center}
+.wcell .wval{font-size:24px;font-weight:600;color:var(--color-text-primary);line-height:1.05;font-variant-numeric:tabular-nums}
+.wcell .wsub{font-size:11px;color:var(--color-text-secondary);line-height:1.3;min-height:14px}
+.wcell .wlbl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--color-text-secondary);margin-top:3px;font-weight:600}
+.wcell.wbold{border-color:var(--t400);background:var(--t50)}
+.wcell.wbold .wval{font-weight:800;color:var(--t800)}
+.wcell.wbold .wlbl{color:var(--t600)}
+.hcell{border-radius:var(--border-radius-md);padding:10px 6px;text-align:center;border:0.5px solid var(--t100);background:var(--t50)}
+.hcell .hhdg{font-size:17px;font-weight:600;color:var(--t800);line-height:1.15}
+.hcell .hlbl{font-size:11px;color:var(--t600);margin-top:2px}
+.hcell .hdiff{font-size:10px;margin-top:3px;color:var(--t600)}
+.hcell.hon{background:#fff;border-color:var(--t400);border-width:1.5px}
+.hcell.hon .hhdg{font-weight:800}
+@media(prefers-color-scheme:dark){
+  .wcell.wbold{background:#15251f}
+  .wcell.wbold .wval{color:var(--t100)}
+  .hcell{background:#1b2b26}
+  .hcell .hhdg,.hcell .hlbl,.hcell .hdiff{color:var(--t100)}
+  .hcell.hon{background:#0e3327}
+}
+html[data-theme=dark] .wcell.wbold{background:#15251f}
+html[data-theme=dark] .wcell.wbold .wval{color:var(--t100)}
+html[data-theme=dark] .hcell{background:#1b2b26}
+html[data-theme=dark] .hcell .hhdg,html[data-theme=dark] .hcell .hlbl,html[data-theme=dark] .hcell .hdiff{color:var(--t100)}
+html[data-theme=dark] .hcell.hon{background:#0e3327}
+html[data-theme=light] .wcell.wbold{background:var(--t50)}
+html[data-theme=light] .wcell.wbold .wval{color:var(--t800)}
+html[data-theme=light] .hcell{background:var(--t50)}
+html[data-theme=light] .hcell .hhdg{color:var(--t800)}
+html[data-theme=light] .hcell .hlbl,html[data-theme=light] .hcell .hdiff{color:var(--t600)}
+html[data-theme=light] .hcell.hon{background:#fff}
 .sp{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;background:var(--b50);color:var(--b800)}
 /* ── Weather tab ─────────────────────────────────── */
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
@@ -534,7 +567,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.4.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -2590,7 +2623,7 @@ function renderWindHistory(){
 var raceState={courseId:'',legIdx:1};
 
 /* ── Start timer ─────────────────────────────── */
-var timerState={running:false,endEpoch:null,durationMs:5*60*1000,soundOn:true,_iv:null,_beeped:{},_initialK:null};
+var timerState={running:false,endEpoch:null,durationMs:5*60*1000,soundOn:true,collapsed:false,_iv:null,_beeped:{},_initialK:null};
 
 function _timerACtx(){
   if(!window._timerAudio) window._timerAudio=new(window.AudioContext||window.webkitAudioContext)();
@@ -2644,8 +2677,10 @@ function timerTick(){
     timerState.running=false;
     clearInterval(timerState._iv);timerState._iv=null;
     releaseWakeLock();
-    var rb=document.getElementById('race-timer-btn');
-    if(rb){rb.innerHTML='<i class="ti ti-player-play" aria-hidden="true"></i> Start';rb.style.background='';rb.style.color='';}
+    /* Start gun fired — collapse the timer to a heading to free up space
+       for the tactical panels below (tap the heading to bring it back) */
+    timerState.collapsed=true;
+    renderRaceTimerPanel();
   }
 }
 /* Keep the screen awake during the start sequence — backgrounded tabs get
@@ -2710,17 +2745,39 @@ function timerToggleSound(){
   if(btn) btn.innerHTML='<i class="ti ti-'+(timerState.soundOn?'volume':'volume-off')+'" aria-hidden="true"></i>';
 }
 
+function toggleTimerCollapse(){
+  timerState.collapsed=!timerState.collapsed;
+  renderRaceTimerPanel();
+}
+
 function renderRaceTimerPanel(){
   var el=document.getElementById('race-timer-panel');
-  if(!el||el.dataset.built==='1') return; /* Build once; tick patches in-place */
+  if(!el) return;
+  /* Rebuild only on first build or when the collapsed state flips —
+     timerTick still patches #race-timer-disp in place between rebuilds */
+  var wantC=timerState.collapsed?'1':'0';
+  if(el.dataset.built==='1'&&el.dataset.collapsed===wantC) return;
   var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):timerState.durationMs/1000;
   var m=Math.floor(sec/60),s=Math.floor(sec%60);
   var str=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
   var clr=sec<=10?'color:var(--c400)':sec<=60?'color:#f59e0b':'';
+  /* Collapsed — a slim tappable heading that restores the full timer */
+  if(timerState.collapsed){
+    var hc='<div class="card" style="margin-bottom:14px;padding:0;overflow:hidden">';
+    hc+='<button onclick="toggleTimerCollapse()" aria-label="Expand start timer" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;background:none;border:none;cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent;min-height:44px">';
+    hc+='<span class="sec-lbl" style="margin:0">Start timer</span>';
+    hc+='<span style="display:flex;align-items:center;gap:8px">';
+    hc+='<span id="race-timer-disp" style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;'+clr+'">'+str+'</span>';
+    hc+='<i class="ti ti-chevron-down" style="color:var(--color-text-secondary);font-size:16px" aria-hidden="true"></i>';
+    hc+='</span></button></div>';
+    el.innerHTML=hc;
+    el.dataset.built='1';el.dataset.collapsed='1';
+    return;
+  }
   var d5=timerState.durationMs===5*60000,d10=timerState.durationMs===10*60000;
   var h='<div class="card" style="margin-bottom:14px;padding:14px">';
   h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-  h+='<span class="sec-lbl" style="margin:0">Start timer</span>';
+  h+='<button onclick="toggleTimerCollapse()" aria-label="Collapse start timer" style="display:flex;align-items:center;gap:5px;background:none;border:none;padding:0;cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent"><span class="sec-lbl" style="margin:0">Start timer</span><i class="ti ti-chevron-up" style="color:var(--color-text-secondary);font-size:14px" aria-hidden="true"></i></button>';
   h+='<div style="display:flex;gap:5px;align-items:center">';
   h+='<button class="timer-preset" data-ms="'+(5*60000)+'" onclick="timerSetDuration(5*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(d5?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(d5?'var(--t600)':'none')+';color:'+(d5?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">5m</button>';
   h+='<button class="timer-preset" data-ms="'+(10*60000)+'" onclick="timerSetDuration(10*60000)" style="padding:3px 9px;font-size:12px;border:1px solid '+(d10?'var(--t600)':'var(--color-border-secondary)')+';border-radius:6px;background:'+(d10?'var(--t600)':'none')+';color:'+(d10?'#fff':'var(--color-text-secondary)')+';cursor:pointer;font-family:var(--font-sans)">10m</button>';
@@ -2733,7 +2790,7 @@ function renderRaceTimerPanel(){
   h+='<button onclick="timerReset()" style="padding:10px 18px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button>';
   h+='</div></div>';
   el.innerHTML=h;
-  el.dataset.built='1';
+  el.dataset.built='1';el.dataset.collapsed='0';
 }
 
 function getRaceVariant(){
@@ -2755,137 +2812,162 @@ function raceAdvanceLeg(delta){
 function renderRaceTab(){
   var el=document.getElementById('race-content');
   if(!el) return;
-  var html='';
   renderRaceTimerPanel();
 
-  /* ── Wind ── */
-  var tws=skState.windKts;
+  /* ── Wind state ── */
+  var tws=skState.windKts;          /* best wind speed (true preferred) */
   var windDir=skState.windDir;
   var cog=skState.cogDeg;
   var hasWind=tws!=null&&windDir!=null;
 
-  /* TWA — wind angle relative to COG */
+  /* True wind angle relative to COG */
   var twaVal=null,twaSide=null;
   if(windDir!=null&&cog!=null){
     var raw=((windDir-cog)+360)%360;
     twaVal=raw<=180?raw:360-raw;
     twaSide=raw<=180?'Stbd':'Port';
   }
-
-  html+='<p class="sec-lbl">Wind</p>';
-  html+='<div class="stat-row" style="margin-bottom:10px">';
-  html+='<div class="stat"><div class="stat-val">'+(tws!=null?tws.toFixed(1):'--')+'<span style="font-size:13px;font-weight:400;color:var(--color-text-secondary)"> kts</span></div>';
-  html+='<div class="stat-lbl">'+(skState.windLabel||'TWS')+'</div></div>';
-  html+='<div class="stat">';
-  if(twaVal!=null){
-    var sideClr=twaSide==='Stbd'?'var(--t600)':'var(--c400)';
-    html+='<div class="stat-val">'+Math.round(twaVal)+'°<span style="font-size:14px;font-weight:600;color:'+sideClr+';margin-left:5px">'+twaSide+'</span></div>';
-  } else {
-    html+='<div class="stat-val">--</div>';
+  /* Apparent wind (raw from SK) for the compact grid */
+  var aws=skState._speedApp!=null?skState._speedApp*MS2KTS:null;
+  var awaMag=null,awaSide=null;
+  if(skState._angleApp!=null){
+    var araw=((skState._angleApp*RAD2DEG+180)%360+360)%360-180; /* -180..180 */
+    awaMag=Math.abs(araw); awaSide=araw>=0?'Stbd':'Port';
   }
-  html+='<div class="stat-lbl">TWA</div></div></div>';
+  /* Only surface TWS when we actually have true wind (not apparent-only) */
+  var twsVal=skState.windLabel==='AWS'?null:skState.windKts;
 
-  html+='<div class="sb" style="margin-bottom:14px">';
-  html+='<div class="sr"><span class="sr-lbl">Wind from</span><span class="sr-val">'+(windDir!=null?compass(windDir)+' '+Math.round(windDir)+'°':'--')+'</span></div>';
-  html+='<div class="sr"><span class="sr-lbl">COG</span><span class="sr-val">'+(cog!=null?compass(cog)+' '+Math.round(cog)+'°':'--')+'</span></div>';
-  html+='<div class="sr" style="border-bottom:none"><span class="sr-lbl">SOG</span><span class="sr-val">'+(skState.sogKts!=null?skState.sogKts.toFixed(1)+' kts':'--')+'</span></div>';
-  html+='</div>';
+  /* Point-of-sail featuring with a 95-105° neutral band to avoid flicker */
+  var feature='both';
+  if(twaVal!=null){ if(twaVal<95) feature='up'; else if(twaVal>105) feature='down'; }
 
-  /* ── Optimal headings from polar ── */
-  html+='<p class="sec-lbl">Optimal headings</p>';
+  /* ── 1. Optimal headings from polar ── */
+  var optHtml='<p class="sec-lbl">Optimal headings</p>';
   if(hasWind){
     var p=interpPolar(tws);
-    function cogDiff(hdg){
-      if(cog==null) return null;
-      return Math.round(((hdg-cog+540)%360)-180);
-    }
-    function hdgCell(hdg,label){
+    var cogDiff=function(hdg){ return cog==null?null:Math.round(((hdg-cog+540)%360)-180); };
+    var hdgCell=function(hdg,label){
       var d=cogDiff(hdg);
       var near=d!=null&&Math.abs(d)<=8;
       var dStr=d==null?'':(d===0?'✓ on course':d>0?'+'+d+'° right':d+'° left');
-      return '<div class="polar-stat" style="'+(near?'background:var(--t50);border-color:var(--t400);':'')+'">'
-        +'<div class="polar-stat-val" style="font-size:17px;font-weight:600">'+compass(hdg)+' '+hdg+'°</div>'
-        +'<div class="polar-stat-lbl">'+label+'</div>'
-        +(dStr?'<div style="font-size:10px;margin-top:3px;color:'+(near?'var(--t600)':'var(--color-text-secondary)')+'">'+dStr+'</div>':'')
-        +'</div>';
-    }
-    var upS=Math.round((windDir-p.upTWA+360)%360);
-    var upP=Math.round((windDir+p.upTWA)%360);
-    var dnS=Math.round((windDir-p.downTWA+360)%360);
-    var dnP=Math.round((windDir+p.downTWA)%360);
-
-    html+='<div class="polar-box" style="margin-bottom:10px">';
-    html+='<div class="polar-box-title">Upwind VMG &nbsp;·&nbsp; TWA '+p.upTWA.toFixed(1)+'° &nbsp;·&nbsp; target '+p.upBTV.toFixed(2)+' kts</div>';
-    html+='<div class="polar-stats" style="grid-template-columns:1fr 1fr">';
-    html+=hdgCell(upS,'Stbd tack')+hdgCell(upP,'Port tack');
-    html+='</div></div>';
-
-    html+='<div class="polar-box" style="margin-bottom:14px">';
-    html+='<div class="polar-box-title">Downwind VMG &nbsp;·&nbsp; TWA '+p.downTWA.toFixed(1)+'° &nbsp;·&nbsp; target '+p.downBTV.toFixed(2)+' kts</div>';
-    html+='<div class="polar-stats" style="grid-template-columns:1fr 1fr">';
-    html+=hdgCell(dnS,'Stbd gybe')+hdgCell(dnP,'Port gybe');
-    html+='</div></div>';
+      return '<div class="hcell'+(near?' hon':'')+'"><div class="hhdg">'+compass(hdg)+' '+hdg+'°</div>'
+        +'<div class="hlbl">'+label+'</div>'+(dStr?'<div class="hdiff">'+dStr+'</div>':'')+'</div>';
+    };
+    var upS=Math.round((windDir-p.upTWA+360)%360), upP=Math.round((windDir+p.upTWA)%360);
+    var dnS=Math.round((windDir-p.downTWA+360)%360), dnP=Math.round((windDir+p.downTWA)%360);
+    var fullBox=function(kind){
+      var isUp=kind==='up';
+      return '<div class="polar-box" style="margin-bottom:10px"><div class="polar-box-title">'
+        +(isUp?'Upwind VMG':'Downwind VMG')+' &nbsp;·&nbsp; TWA '+(isUp?p.upTWA:p.downTWA).toFixed(1)+'° &nbsp;·&nbsp; target '+(isUp?p.upBTV:p.downBTV).toFixed(2)+' kts</div>'
+        +'<div class="polar-stats" style="grid-template-columns:1fr 1fr">'
+        +(isUp?hdgCell(upS,'Stbd tack')+hdgCell(upP,'Port tack'):hdgCell(dnS,'Stbd gybe')+hdgCell(dnP,'Port gybe'))
+        +'</div></div>';
+    };
+    var compactBox=function(kind){
+      var isUp=kind==='up', sH=isUp?upS:dnS, pH=isUp?upP:dnP;
+      return '<div class="polar-box" style="margin-bottom:10px;padding:8px 12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'
+        +'<span style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;color:var(--t600)">'+(isUp?'Upwind':'Downwind')+' · TWA '+(isUp?p.upTWA:p.downTWA).toFixed(0)+'°</span>'
+        +'<span style="font-size:12px;font-weight:500;color:var(--t800)">'+compass(sH)+' '+sH+'° <span style="color:var(--t600)">/</span> '+compass(pH)+' '+pH+'°</span>'
+        +'</div></div>';
+    };
+    if(feature==='up')        optHtml+=fullBox('up')+compactBox('down');
+    else if(feature==='down') optHtml+=compactBox('up')+fullBox('down');
+    else                      optHtml+=fullBox('up')+fullBox('down');
   } else {
-    html+='<div class="card" style="margin-bottom:14px;color:var(--color-text-secondary);font-size:13px;text-align:center;padding:20px">';
-    html+='<i class="ti ti-wind" style="font-size:22px;display:block;margin-bottom:8px;opacity:.35"></i>';
-    html+='Live wind data needed for polar headings</div>';
+    optHtml+='<div class="card" style="margin-bottom:14px;color:var(--color-text-secondary);font-size:13px;text-align:center;padding:20px">'
+      +'<i class="ti ti-wind" style="font-size:22px;display:block;margin-bottom:8px;opacity:.35"></i>Live wind data needed for polar headings</div>';
   }
 
-  /* ── Wind history ── */
-  html+=renderWindHistory();
-
-  /* ── Next mark ── */
-  html+='<p class="sec-lbl">Next mark</p>';
+  /* ── 2. Next mark (compact) ── */
+  var nextHtml='';
   var v=getRaceVariant();
   if(!v){
-    html+='<div class="card" style="cursor:pointer;margin-bottom:10px" onclick="showTabById(\'npsa\');onShowNpsa()">';
-    html+='<div style="display:flex;align-items:center;gap:10px">';
-    html+='<i class="ti ti-map" style="font-size:20px;color:var(--b400);flex-shrink:0" aria-hidden="true"></i>';
-    html+='<div><div class="card-title">No course selected</div><div class="card-sub">Select a course in the Courses tab first</div></div>';
-    html+='<i class="ti ti-chevron-right" style="margin-left:auto;color:var(--color-text-secondary);font-size:18px" aria-hidden="true"></i>';
-    html+='</div></div>';
+    nextHtml+='<div class="card" style="cursor:pointer;margin-bottom:10px" onclick="showTabById(\'npsa\');onShowNpsa()">';
+    nextHtml+='<div style="display:flex;align-items:center;gap:10px">';
+    nextHtml+='<i class="ti ti-map" style="font-size:20px;color:var(--b400);flex-shrink:0" aria-hidden="true"></i>';
+    nextHtml+='<div><div class="card-title">No course selected</div><div class="card-sub">Select a course in the Courses tab first</div></div>';
+    nextHtml+='<i class="ti ti-chevron-right" style="margin-left:auto;color:var(--color-text-secondary);font-size:18px" aria-hidden="true"></i>';
+    nextHtml+='</div></div>';
   } else {
     var marks=v.marks,rounds=v.rounds;
     var idx=Math.min(raceState.legIdx,marks.length-1);
     var markId=marks[idx],rounding=rounds[idx];
     var markName=getActiveMarkNames()[markId]||markId;
     var markPos=getActiveMarks()[markId];
-
-    /* Leg nav */
-    html+='<div class="card" style="margin-bottom:10px">';
-    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
-    html+='<span style="font-size:13px;color:var(--color-text-secondary)">Course '+raceState.courseId+' &nbsp;·&nbsp; Leg '+idx+'/'+(marks.length-1)+'</span>';
-    html+='<div style="display:flex;gap:6px">';
-    html+='<button onclick="raceAdvanceLeg(-1)" style="padding:5px 14px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">◀</button>';
-    html+='<button onclick="raceAdvanceLeg(1)" style="padding:5px 14px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">▶</button>';
-    html+='</div></div>';
-
-    /* Mark swatch — red/green/blue coded */
     var mkColor=rounding===null?'var(--b800)':rounding==='P'?'#dc2626':'#16a34a';
     var mkBg=rounding===null?'var(--b50)':rounding==='P'?'#fee2e2':'#dcfce7';
     var mkBorder=rounding===null?'var(--b100)':rounding==='P'?'#fca5a5':'#86efac';
     var mkTxt=rounding===null?'Start / Finish':rounding==='P'?'Round to Port':'Round to Starboard';
-    html+='<div style="background:'+mkBg+';border:1px solid '+mkBorder+';border-radius:var(--border-radius-md);padding:11px 13px;margin-bottom:12px">';
-    html+='<div style="font-size:20px;font-weight:700;color:'+mkColor+'">'+markName+'</div>';
-    html+='<div style="font-size:12px;font-weight:600;color:'+mkColor+';margin-top:2px;text-transform:uppercase;letter-spacing:.5px">'+mkTxt+'</div>';
-    html+='</div>';
+    var posLat=getEffectiveLat(),posLon=getEffectiveLon();
+    var gpsTag=posLat==null?'<span style="color:var(--color-text-secondary)">no GPS</span>'
+      :usingPhoneGPS()?'<span style="color:#7c3aed;font-weight:600">📱 Phone</span>'
+      :'<span style="color:var(--t600);font-weight:600">⚓ Signal K</span>';
+    var navBtns='<button onclick="raceAdvanceLeg(-1)" style="padding:5px 13px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">◀</button>'
+      +'<button onclick="raceAdvanceLeg(1)" style="padding:5px 13px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:pointer;min-height:36px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">▶</button>';
 
-    /* Bearing / distance / ETA — shared with Courses card; uses phone GPS fallback */
-    html+=nextMarkRowsHTML(markPos,mkColor);
-    html+='</div>';
-
-    /* Mini mark trail */
-    html+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;line-height:2.2">';
+    nextHtml+='<div class="card" style="margin-bottom:10px">';
+    /* Header: course · leg · gps  +  nav arrows */
+    nextHtml+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">';
+    nextHtml+='<span style="font-size:13px;color:var(--color-text-secondary)">Course '+raceState.courseId+' · Leg '+idx+'/'+(marks.length-1)+' · '+gpsTag+'</span>';
+    nextHtml+='<div style="display:flex;gap:6px">'+navBtns+'</div>';
+    nextHtml+='</div>';
+    /* Mark trail directly under the header */
+    nextHtml+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;line-height:1.9;margin-bottom:10px">';
     marks.forEach(function(m,i){
       var r=rounds[i],nm=getActiveMarkNames()[m]||m,isCur=i===idx,isPast=i<idx;
       var cls=r===null?'npsa-mark-start':r==='P'?'npsa-mark-port':'npsa-mark-stbd';
-      html+='<span class="npsa-mark-tag '+cls+'" style="opacity:'+(isPast?'0.4':'1')+';'+(isCur?'outline:2px solid '+mkColor+';outline-offset:2px;':'')+'">'+nm+'</span>';
-      if(i<marks.length-1) html+='<span style="color:var(--color-text-secondary);font-size:11px">→</span>';
+      nextHtml+='<span class="npsa-mark-tag '+cls+'" style="opacity:'+(isPast?'0.4':'1')+';'+(isCur?'outline:2px solid '+mkColor+';outline-offset:2px;':'')+'">'+nm+'</span>';
+      if(i<marks.length-1) nextHtml+='<span style="color:var(--color-text-secondary);font-size:11px">→</span>';
     });
-    html+='</div>';
+    nextHtml+='</div>';
+    /* Highlighted box: mark name + rounding on the left, big bearing on the right */
+    var brg=(posLat!=null&&markPos)?bearingDeg([posLat,posLon],markPos):null;
+    nextHtml+='<div style="background:'+mkBg+';border:1px solid '+mkBorder+';border-radius:var(--border-radius-md);padding:11px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px">';
+    nextHtml+='<div><div style="font-size:20px;font-weight:700;color:'+mkColor+'">'+markName+'</div>';
+    nextHtml+='<div style="font-size:12px;font-weight:600;color:'+mkColor+';margin-top:2px;text-transform:uppercase;letter-spacing:.5px">'+mkTxt+'</div></div>';
+    nextHtml+='<div style="text-align:right"><div style="font-size:30px;font-weight:700;color:'+mkColor+';line-height:1;white-space:nowrap">'+(brg!=null?compass(brg)+' '+Math.round(brg)+'°':'--')+'</div>';
+    nextHtml+='<div style="font-size:11px;font-weight:600;color:'+mkColor+';opacity:.85;text-transform:uppercase;letter-spacing:.5px;margin-top:2px">Bearing</div></div>';
+    nextHtml+='</div>';
+    /* Distance · ETA · VMG on one line under the box */
+    nextHtml+='<div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:13px">';
+    if(posLat!=null&&markPos){
+      var dist=distNm([posLat,posLon],markPos);
+      var etaStr='--',vmgStr='--';
+      if(skState.sogKts!=null&&skState.sogKts>0.2){
+        var etaMins=Math.round(dist/skState.sogKts*60);
+        etaStr='~'+(etaMins<60?etaMins+' min':Math.floor(etaMins/60)+'h'+(etaMins%60?' '+etaMins%60+'m':''));
+      }
+      if(skState.sogKts!=null&&cog!=null&&brg!=null) vmgStr=(skState.sogKts*Math.cos((brg-cog)*Math.PI/180)).toFixed(1)+' kts';
+      nextHtml+='<span><span style="color:var(--color-text-secondary)">Dist</span> <strong>'+dist.toFixed(2)+' nm</strong></span>';
+      nextHtml+='<span><span style="color:var(--color-text-secondary)">ETA</span> '+etaStr+'</span>';
+      nextHtml+='<span><span style="color:var(--color-text-secondary)">VMG</span> '+vmgStr+'</span>';
+    } else {
+      nextHtml+='<span style="color:var(--color-text-secondary)">GPS position required for bearing &amp; distance</span>';
+    }
+    nextHtml+='</div></div>';
   }
 
-  el.innerHTML=html;
+  /* ── 3. Wind (compact grid) ── */
+  var boldApp=feature==='up', boldTrue=feature==='down';
+  var wcell=function(big,sub,lbl,bold,subClr){
+    return '<div class="wcell'+(bold?' wbold':'')+'"><div class="wval">'+big+'</div>'
+      +'<div class="wsub"'+(subClr?' style="color:'+subClr+'"':'')+'>'+(sub||'&nbsp;')+'</div>'
+      +'<div class="wlbl">'+lbl+'</div></div>';
+  };
+  var sideClrOf=function(sd){ return sd==='Stbd'?'var(--t600)':'var(--c400)'; };
+  var windHtml='<p class="sec-lbl">Wind</p><div class="wind-grid">';
+  windHtml+=wcell(skState.sogKts!=null?skState.sogKts.toFixed(1):'--','kts','SOG',false);
+  windHtml+=wcell(aws!=null?aws.toFixed(1):'--','kts','AWS',boldApp);
+  windHtml+=wcell(twsVal!=null?twsVal.toFixed(1):'--','kts','TWS',boldTrue);
+  windHtml+=wcell(cog!=null?Math.round(cog)+'°':'--',cog!=null?compass(cog):'','COG',false);
+  windHtml+=wcell(awaMag!=null?Math.round(awaMag)+'°':'--',awaSide||'','AWA',boldApp,awaSide?sideClrOf(awaSide):null);
+  windHtml+=wcell(twaVal!=null?Math.round(twaVal)+'°':'--',twaSide||'','TWA',boldTrue,twaSide?sideClrOf(twaSide):null);
+  windHtml+='</div>';
+
+  /* ── 4. Wind history ── */
+  var histHtml=renderWindHistory();
+
+  el.innerHTML=optHtml+nextHtml+windHtml+histHtml;
 }
 
 /* ── Live wind direction + speed in wind arrow label ────────── */
