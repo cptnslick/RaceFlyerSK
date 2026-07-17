@@ -44,6 +44,9 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 ### Trim Guide
 - Per-point-of-sail settings (upwind, reaching, running) with a wind speed slider
 - All three modes respond to the slider: condition badge, sail selection, polar targets, and downwind gybe-angle goal update with TWS
+- Upwind shows the target apparent wind angle (AWA) alongside the true wind
+  angle — the AWA is what the masthead reads and the helm steers to (~13–15°
+  tighter than TWA), while TWA still drives the tack headings and laylines
 - Trim rules and goals sourced from SJ35 tuning notes
 - Slider position smoothed with a 60-second rolling wind average to prevent jumping on gusts
 

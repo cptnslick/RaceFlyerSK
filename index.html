@@ -567,7 +567,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.1</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -742,14 +742,16 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
    validated against the certificate's BestPerf table to ±0.01 kt.
    SYM_CROSS = TWA where the symmetric spinnaker overtakes the headsail
    (constant ~110 deg across the 6-20 kt range in this cert). */
+/* upAWA = apparent wind angle at the upwind VMG optimum (what the masthead
+   reads and the helm steers to; ~13-15° tighter than the true TWA). */
 const POLAR={
-  6: {upTWA:41.2,upBTV:5.01,upVMG:3.77,reach90:5.88,reach120:5.37,downTWA:144.2,downBTV:4.31,downVMG:3.49},
-  8: {upTWA:39.0,upBTV:5.67,upVMG:4.40,reach90:6.53,reach120:6.33,downTWA:149.6,downBTV:5.14,downVMG:4.43},
-  10:{upTWA:37.6,upBTV:5.93,upVMG:4.70,reach90:6.90,reach120:6.86,downTWA:154.1,downBTV:5.82,downVMG:5.24},
-  12:{upTWA:37.2,upBTV:6.07,upVMG:4.84,reach90:7.16,reach120:7.24,downTWA:164.0,downBTV:6.15,downVMG:5.91},
-  14:{upTWA:37.0,upBTV:6.16,upVMG:4.92,reach90:7.37,reach120:7.60,downTWA:177.2,downBTV:6.48,downVMG:6.48},
-  16:{upTWA:36.9,upBTV:6.21,upVMG:4.97,reach90:7.56,reach120:7.96,downTWA:179.0,downBTV:6.89,downVMG:6.89},
-  20:{upTWA:37.2,upBTV:6.27,upVMG:4.99,reach90:7.84,reach120:8.73,downTWA:179.0,downBTV:7.56,downVMG:7.56},
+  6: {upTWA:41.2,upAWA:22.5,upBTV:5.01,upVMG:3.77,reach90:5.88,reach120:5.37,downTWA:144.2,downBTV:4.31,downVMG:3.49},
+  8: {upTWA:39.0,upAWA:23.0,upBTV:5.67,upVMG:4.40,reach90:6.53,reach120:6.33,downTWA:149.6,downBTV:5.14,downVMG:4.43},
+  10:{upTWA:37.6,upAWA:23.8,upBTV:5.93,upVMG:4.70,reach90:6.90,reach120:6.86,downTWA:154.1,downBTV:5.82,downVMG:5.24},
+  12:{upTWA:37.2,upAWA:24.9,upBTV:6.07,upVMG:4.84,reach90:7.16,reach120:7.24,downTWA:164.0,downBTV:6.15,downVMG:5.91},
+  14:{upTWA:37.0,upAWA:25.9,upBTV:6.16,upVMG:4.92,reach90:7.37,reach120:7.60,downTWA:177.2,downBTV:6.48,downVMG:6.48},
+  16:{upTWA:36.9,upAWA:26.8,upBTV:6.21,upVMG:4.97,reach90:7.56,reach120:7.96,downTWA:179.0,downBTV:6.89,downVMG:6.89},
+  20:{upTWA:37.2,upAWA:28.6,upBTV:6.27,upVMG:4.99,reach90:7.84,reach120:8.73,downTWA:179.0,downBTV:7.56,downVMG:7.56},
 };
 const TWS_KEYS=[6,8,10,12,14,16,20];
 const SYM_CROSS=110; /* deg TWA — spinnaker faster than headsail beyond this */
@@ -763,11 +765,11 @@ function interpPolar(tws){
   const t=(tws-lo)/(hi-lo);
   const a=POLAR[lo],b=POLAR[hi];
   const lerp=(x,y)=>Math.round((x+(y-x)*t)*100)/100;
-  return{upTWA:lerp(a.upTWA,b.upTWA),upBTV:lerp(a.upBTV,b.upBTV),upVMG:lerp(a.upVMG,b.upVMG),reach90:lerp(a.reach90,b.reach90),reach120:lerp(a.reach120,b.reach120),downTWA:lerp(a.downTWA,b.downTWA),downBTV:lerp(a.downBTV,b.downBTV),downVMG:lerp(a.downVMG,b.downVMG)};
+  return{upTWA:lerp(a.upTWA,b.upTWA),upAWA:lerp(a.upAWA,b.upAWA),upBTV:lerp(a.upBTV,b.upBTV),upVMG:lerp(a.upVMG,b.upVMG),reach90:lerp(a.reach90,b.reach90),reach120:lerp(a.reach120,b.reach120),downTWA:lerp(a.downTWA,b.downTWA),downBTV:lerp(a.downBTV,b.downBTV),downVMG:lerp(a.downVMG,b.downVMG)};
 }
 
 function polarHTML(p,mode){
-  if(mode==='up') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — UPWIND VMG</div><div class="polar-stats"><div class="polar-stat"><div class="polar-stat-val">'+p.upTWA.toFixed(1)+'</div><div class="polar-stat-lbl">Best TWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upBTV.toFixed(2)+'</div><div class="polar-stat-lbl">Target BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upVMG.toFixed(2)+'</div><div class="polar-stat-lbl">VMG</div></div></div></div>';
+  if(mode==='up') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — UPWIND VMG</div><div class="polar-stats" style="grid-template-columns:1fr 1fr"><div class="polar-stat"><div class="polar-stat-val">'+p.upTWA.toFixed(1)+'</div><div class="polar-stat-lbl">Best TWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upAWA.toFixed(1)+'</div><div class="polar-stat-lbl">Target AWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upBTV.toFixed(2)+'</div><div class="polar-stat-lbl">Target BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upVMG.toFixed(2)+'</div><div class="polar-stat-lbl">VMG</div></div></div></div>';
   if(mode==='reach') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — REACH TARGETS</div><div class="polar-stats"><div class="polar-stat"><div class="polar-stat-val">'+p.reach90.toFixed(2)+'</div><div class="polar-stat-lbl">Beam 90° BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.reach120.toFixed(2)+'</div><div class="polar-stat-lbl">Broad 120° BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+SYM_CROSS+'°</div><div class="polar-stat-lbl">Spin crossover</div></div></div></div>';
   if(mode==='run') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — DOWNWIND VMG</div><div class="polar-stats"><div class="polar-stat"><div class="polar-stat-val">'+p.downTWA.toFixed(1)+'</div><div class="polar-stat-lbl">Best TWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.downBTV.toFixed(2)+'</div><div class="polar-stat-lbl">Target BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.downVMG.toFixed(2)+'</div><div class="polar-stat-lbl">VMG</div></div></div></div>';
 }
@@ -2858,7 +2860,8 @@ function renderRaceTab(){
     var fullBox=function(kind){
       var isUp=kind==='up';
       return '<div class="polar-box" style="margin-bottom:10px"><div class="polar-box-title">'
-        +(isUp?'Upwind VMG':'Downwind VMG')+' &nbsp;·&nbsp; TWA '+(isUp?p.upTWA:p.downTWA).toFixed(1)+'° &nbsp;·&nbsp; target '+(isUp?p.upBTV:p.downBTV).toFixed(2)+' kts</div>'
+        +(isUp?'Upwind VMG':'Downwind VMG')+' &nbsp;·&nbsp; TWA '+(isUp?p.upTWA:p.downTWA).toFixed(1)+'°'
+        +(isUp?' &nbsp;·&nbsp; AWA '+p.upAWA.toFixed(0)+'°':'')+' &nbsp;·&nbsp; target '+(isUp?p.upBTV:p.downBTV).toFixed(2)+' kts</div>'
         +'<div class="polar-stats" style="grid-template-columns:1fr 1fr">'
         +(isUp?hdgCell(upS,'Stbd tack')+hdgCell(upP,'Port tack'):hdgCell(dnS,'Stbd gybe')+hdgCell(dnP,'Port gybe'))
         +'</div></div>';
