@@ -30,6 +30,14 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
   and distance / ETA / VMG with leg navigation
 
 ### Race Tactics
+- Start timer with selectable sequences (classic **5·4·1·0** RRS sequence by
+  default, plus a 10-minute option) and the matching horn schedule
+- **Sync ±** buttons flanking the clock snap the remaining time to the nearest
+  whole minute, to trim drift against the race committee's signals
+- **Auto-start at gun time** — enter a 24-hour start time and the sequence
+  arms and fires its horns on its own; just tap Sync if it's slightly off
+- Horns use the `playback` audio session so they sound with the phone on
+  silent / vibrate (iOS 16.4+ and other modern browsers)
 - Collapsible start timer — collapses to a heading when the gun fires (tap to restore)
 - Layout ordered timer → optimal headings → next mark → wind for at-a-glance racing
 - Optimal upwind/downwind VMG headings from the SJ35 ORC polar; the point of
