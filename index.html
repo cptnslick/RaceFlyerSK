@@ -451,6 +451,9 @@ html[data-theme=light] .hcell.hon{background:#fff}
 .npsa-course-sel{width:100%;font-size:16px;border-radius:var(--border-radius-md);border:1px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);padding:11px 36px 11px 12px;appearance:none;-webkit-appearance:none;font-family:var(--font-sans);margin-bottom:10px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2371717a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 12px center}
+/* Club/series + course selectors share one row (club left, course right) */
+.npsa-sel-row{display:flex;gap:8px;margin-bottom:8px}
+.npsa-sel-row .npsa-course-sel{flex:1;min-width:0;margin-bottom:0}
 .npsa-mark-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;margin:0 2px}
 .npsa-mark-port{background:#fee2e2;color:#991b1b}
 .npsa-mark-stbd{background:#dcfce7;color:#166534}
@@ -510,6 +513,7 @@ html[data-theme=light] .hcell.hon{background:#fff}
   }
   .npsa-header{display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;flex-shrink:0}
   .npsa-header .npsa-seg{margin-bottom:0;flex-shrink:0;width:auto}
+  .npsa-header .npsa-sel-row{flex:1;margin-bottom:0}
   .npsa-header .npsa-course-sel{flex:1;margin-bottom:0}
   #npsa-map{flex:1;height:auto !important;margin-bottom:0}
   /* trim: side-by-side polar + settings on wide landscape */
@@ -564,7 +568,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.3</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.5.4</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -670,18 +674,20 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
   <!-- COURSES -->
   <div id="tab-npsa" class="screen">
     <div class="npsa-header">
-    <select class="npsa-course-sel" id="npsa-club-sel" onchange="setNpsaClub(this.value)" style="margin-bottom:8px">
-      <option value="npsa">NPSA · North Point</option>
-      <option value="npsa3">NPSA · Series 3</option>
-      <option value="rcra">RCRA · Rock Creek</option>
-    </select>
+    <div class="npsa-sel-row">
+      <select class="npsa-course-sel" id="npsa-club-sel" onchange="setNpsaClub(this.value)">
+        <option value="npsa">NPSA · North Point</option>
+        <option value="npsa3">NPSA · Series 3</option>
+        <option value="rcra">RCRA · Rock Creek</option>
+      </select>
+      <select class="npsa-course-sel" id="npsa-course-sel" onchange="selectCourse(this.value)">
+        <option value="">Select course…</option>
+      </select>
+    </div>
     <div class="npsa-seg" id="npsa-class-seg">
       <button class="npsa-seg-btn active" id="nsb-spin" onclick="setNpsaClass('spin')"><i class="ti ti-wind" aria-hidden="true"></i> Spinnaker</button>
       <button class="npsa-seg-btn" id="nsb-nspin" onclick="setNpsaClass('nspin')"><i class="ti ti-triangle" aria-hidden="true"></i> Non-Spin</button>
     </div>
-    <select class="npsa-course-sel" id="npsa-course-sel" onchange="selectCourse(this.value)">
-      <option value="">— Select a course —</option>
-    </select>
     </div><!-- /.npsa-header -->
     <div id="npsa-next-mark" style="margin-bottom:12px"></div>
     <div id="npsa-map"></div>
@@ -2205,7 +2211,7 @@ function populateCourseDropdown(){
   var sel=document.getElementById('npsa-course-sel');
   if(!sel) return;
   var courses=getActiveCourses();
-  var html='<option value="">— Select a course —</option>';
+  var html='<option value="">Select course…</option>';
   Object.keys(courses).forEach(function(id){
     var c=courses[id];
     html+='<option value="'+id+'">'+id+'  · '+c.wind+' wind · '+(c.desc||'')+'</option>';
