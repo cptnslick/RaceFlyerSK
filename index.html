@@ -798,11 +798,23 @@ function renderAll(){updateUpwind();updateReach();updateRun();updateDashConditio
 var windAvgBuf=[];
 var WIND_AVG_WINDOW=60000; /* ms */
 
-/* Wind history for lull/avg/gust and shift-pattern analysis */
-var windHistBuf=[];
+/* Wind history for lull/avg/gust and shift-pattern analysis.
+   Persisted to localStorage so a mid-race reload doesn't throw away the
+   30 minutes of shift data right when it's needed. */
 var WIND_HIST_MAX_MS=90*60*1000;
 var WIND_HIST_INTERVAL_MS=15000;
 var _lastWindHistTs=0;
+var windHistBuf=(function(){
+  try{
+    var s=JSON.parse(localStorage.getItem('wind_hist'));
+    if(s&&s.length){
+      var cut=Date.now()-WIND_HIST_MAX_MS;
+      s=s.filter(function(x){return x.t>cut;});
+      if(s.length) return s;
+    }
+  }catch(e){}
+  return [];
+})();
 
 function pushWindSample(kts){
   var now=Date.now();
@@ -2479,6 +2491,8 @@ function pushWindHistSample(){
   _lastWindHistTs=now;
   windHistBuf.push({t:now,dir:skState.windDir,kts:skState.windKts});
   while(windHistBuf.length>0&&windHistBuf[0].t<now-WIND_HIST_MAX_MS) windHistBuf.shift();
+  /* ≤360 samples ≈ 14 KB; written at most once per 15 s */
+  try{localStorage.setItem('wind_hist',JSON.stringify(windHistBuf));}catch(e){}
 }
 
 function _unwrapDirs(dirs){
@@ -3087,6 +3101,60 @@ function raceAdvanceLeg(delta){
   refreshEinkUI();
 }
 
+/* ── Auto leg advance ──────────────────────────────────────────
+   Nobody taps ▶ mid-rounding. Once the boat has come within AUTO_ARRIVE_NM
+   of the active mark and then opened AUTO_DEPART_NM past its closest
+   approach, the rounding is done — advance the leg automatically. Manual
+   arrows still work; a toast offers Undo (which suppresses re-advance for
+   that leg so the still-nearby mark doesn't immediately re-trigger). */
+var AUTO_ARRIVE_NM=0.10, AUTO_DEPART_NM=0.03;
+var _autoLeg={key:'',armed:false,minDist:null,suppressKey:''};
+function autoLegTick(){
+  var v=getRaceVariant(), lat=getEffectiveLat(), lon=getEffectiveLon();
+  if(!v||lat==null){_autoLeg.armed=false;_autoLeg.minDist=null;return;}
+  var idx=raceState.legIdx;
+  var key=npsaClub+'|'+raceState.courseId+'|'+idx;
+  if(key!==_autoLeg.key){_autoLeg.key=key;_autoLeg.armed=false;_autoLeg.minDist=null;}
+  if(key===_autoLeg.suppressKey) return;
+  if(idx>=v.marks.length-1) return; /* at the finish — nothing to advance to */
+  var markPos=getActiveMarks()[v.marks[idx]];
+  if(!markPos) return;
+  var d=distNm([lat,lon],markPos);
+  if(d<=AUTO_ARRIVE_NM){
+    _autoLeg.armed=true;
+    _autoLeg.minDist=_autoLeg.minDist==null?d:Math.min(_autoLeg.minDist,d);
+  } else if(_autoLeg.armed&&d>_autoLeg.minDist+AUTO_DEPART_NM){
+    var names=getActiveMarkNames();
+    var rounded=names[v.marks[idx]]||v.marks[idx];
+    var undoKey=key;
+    raceAdvanceLeg(1);
+    showRaceToast('Rounded '+rounded+' — next: '+(names[v.marks[raceState.legIdx]]||''),
+      function(){_autoLeg.suppressKey=undoKey;raceAdvanceLeg(-1);});
+  }
+}
+setInterval(autoLegTick,2000);
+
+var _toastTimer=null;
+function showRaceToast(msg,undoFn){
+  var t=document.getElementById('race-toast');
+  if(!t){
+    t=document.createElement('div');
+    t.id='race-toast';
+    t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));background:#18181b;color:#fafafa;border-radius:99px;padding:10px 16px;font-size:13px;font-family:var(--font-sans);box-shadow:0 4px 16px rgba(0,0,0,.35);z-index:200;display:flex;align-items:center;gap:12px;white-space:nowrap';
+    document.body.appendChild(t);
+  }
+  window._raceToastUndo=undoFn||null;
+  t.innerHTML='<span>'+msg+'</span>'+(undoFn?'<button onclick="_raceToastUndo&&_raceToastUndo();dismissRaceToast()" style="background:none;border:none;color:#4ade80;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--font-sans);padding:0">Undo</button>':'');
+  t.style.display='flex';
+  if(_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(dismissRaceToast,8000);
+}
+function dismissRaceToast(){
+  var t=document.getElementById('race-toast');
+  if(t) t.style.display='none';
+  if(_toastTimer){clearTimeout(_toastTimer);_toastTimer=null;}
+}
+
 /* Compact next-mark card — course/leg/GPS + arrows, mark trail, a big
    rounding-coloured bearing, and Distance · ETA · VMG. Shared by the Race
    tab and the Courses tab so the two never drift apart. Returns '' if no
@@ -3430,10 +3498,19 @@ function refreshEinkUI(){
   var timerEl=document.getElementById('ek-timer-val');
   var timerSubEl=document.getElementById('ek-timer-sub');
   if(timerEl){
-    var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):timerState.durationMs/1000;
+    /* Mirror the timer panel: running countdown, else armed auto-start
+       counts down to the gun, else the idle sequence duration. */
+    var sec,sub;
+    if(timerState.running&&timerState.endEpoch){
+      sec=Math.max(0,(timerState.endEpoch-Date.now())/1000);sub='Running';
+    } else if(timerState.autoStart&&autoTarget()!=null){
+      sec=Math.max(0,(autoTarget()-Date.now())/1000);sub='Armed · gun '+timerState.startClock;
+    } else {
+      sec=timerState.durationMs/1000;sub='Stopped';
+    }
     timerEl.textContent=_fmt(sec);
     timerEl.style.color=sec<=10?'#cc0000':sec<=60?'#cc8800':'#000'; /* eink stays fixed black-on-white */
-    if(timerSubEl) timerSubEl.textContent=timerState.running?'Running':'Stopped';
+    if(timerSubEl) timerSubEl.textContent=sub;
   }
 }
 
