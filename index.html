@@ -447,7 +447,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.7.2</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.8.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -2111,6 +2111,7 @@ function populateCourseDropdown(){
 var npsaMap=null;
 var npsaLayerGroup=null;
 var npsaLabelGroup=null;
+var npsaLineGroup=null;   /* pinged start line — survives course redraws */
 var npsaBoatMarker=null;
 var npsaClass='spin';
 var npsaLegs=[];      /* {a,b,text} for each drawn leg — used by renderLegLabels */
@@ -2145,11 +2146,13 @@ function onShowNpsa(){
       }).addTo(npsaMap);
       npsaLayerGroup=L.layerGroup().addTo(npsaMap);
       npsaLabelGroup=L.layerGroup().addTo(npsaMap);
+      npsaLineGroup=L.layerGroup().addTo(npsaMap);
       /* Leg labels are placed in screen space, so re-run when zoom changes the
          pixel geometry (pan needs no redraw — labels are geographic). */
       npsaMap.on('zoomend',renderLegLabels);
     }
     npsaMap.invalidateSize();
+    drawStartLine();
     /* Sync club dropdown and populate course list */
     var clubSel=document.getElementById('npsa-club-sel');
     if(clubSel) clubSel.value=npsaClub;
@@ -2368,6 +2371,22 @@ function renderLegLabels(){
       icon:L.divIcon({className:'',html:'<div class="npsa-leg-label">'+leg.text+'</div>',iconAnchor:[w/2,h/2],iconSize:null}),
       interactive:false
     }));
+  });
+}
+
+/* ── Pinged start line on the chart ─────────────────────────── */
+function drawStartLine(){
+  if(!npsaLineGroup) return;
+  npsaLineGroup.clearLayers();
+  if(lineState.pin&&lineState.boat){
+    npsaLineGroup.addLayer(L.polyline([lineState.pin,lineState.boat],{color:'#f59e0b',weight:3,opacity:0.9}));
+  }
+  [['pin','PIN'],['boat','RC']].forEach(function(e){
+    var p=lineState[e[0]];
+    if(!p) return;
+    npsaLineGroup.addLayer(L.marker(p,{interactive:false,zIndexOffset:1500,
+      icon:L.divIcon({className:'',iconSize:null,iconAnchor:[14,10],
+        html:'<div style="background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;border:1.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap">'+e[1]+'</div>'})}));
   });
 }
 
@@ -2796,6 +2815,82 @@ function timerSetClock(v){
   renderRaceTimerPanel(true);
 }
 
+/* ── Start line (ping pin / RC boat, favored end, distance, burn) ──
+   Both ends are pinged by GPS during the pre-start. Favored end needs only
+   wind; distance needs a fix; time-to-burn needs the countdown + SOG/COG.
+   Persisted to localStorage (12 h) so a mid-sequence reload keeps the line. */
+var lineState=(function(){
+  try{
+    var s=JSON.parse(localStorage.getItem('start_line'));
+    if(s&&s.ts&&Date.now()-s.ts<12*3600*1000&&(s.pin||s.boat)) return s;
+  }catch(e){}
+  return {pin:null,boat:null,ts:null};
+})();
+function pingLineEnd(end){
+  var lat=getEffectiveLat(),lon=getEffectiveLon();
+  if(lat==null) return;
+  lineState[end]=[lat,lon];
+  lineState.ts=Date.now();
+  try{localStorage.setItem('start_line',JSON.stringify(lineState));}catch(e){}
+  renderRaceTimerPanel(true);
+  drawStartLine();
+}
+function clearLine(){
+  lineState={pin:null,boat:null,ts:null};
+  try{localStorage.removeItem('start_line');}catch(e){}
+  renderRaceTimerPanel(true);
+  drawStartLine();
+}
+/* Distance (nm) from p to the pin–boat segment (clamped to the ends) and the
+   bearing to that closest point. Local flat-earth math is plenty at line scale. */
+function lineInfo(p){
+  var a=lineState.pin,b=lineState.boat;
+  var cosLat=Math.cos(p[0]*Math.PI/180);
+  var ax=(a[1]-p[1])*cosLat*60, ay=(a[0]-p[0])*60;   /* nm east/north of p */
+  var bx=(b[1]-p[1])*cosLat*60, by=(b[0]-p[0])*60;
+  var dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
+  var t=L2>0?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/L2)):0;
+  var cx=ax+t*dx, cy=ay+t*dy;
+  return {dist:Math.sqrt(cx*cx+cy*cy), brgTo:(Math.atan2(cx,cy)*RAD2DEG+360)%360};
+}
+/* Which end is further upwind. rel = wind angle off the pin→boat axis;
+   |rel|=90 is a square line, <90 means the boat end is more upwind. */
+function lineFavored(){
+  if(!lineState.pin||!lineState.boat||skState.windDir==null) return null;
+  var rel=((skState.windDir-bearingDeg(lineState.pin,lineState.boat)+540)%360)-180;
+  var f=Math.round(90-Math.abs(rel));
+  if(Math.abs(f)<=2) return {end:'square',deg:0};
+  return f>0?{end:'Boat',deg:f}:{end:'Pin',deg:-f};
+}
+function lineStatusHTML(){
+  if(!lineState.pin&&!lineState.boat) return '';
+  if(!lineState.pin||!lineState.boat) return '<span style="color:var(--a400)">One end set — ping the other to arm the line</span>';
+  var bits=[];
+  var fav=lineFavored();
+  if(fav) bits.push(fav.deg===0?'Line square':'<strong>'+fav.end+' favored '+fav.deg+'°</strong>');
+  var lat=getEffectiveLat(),lon=getEffectiveLon();
+  if(lat!=null){
+    var li=lineInfo([lat,lon]);
+    bits.push('<strong>'+(li.dist<0.15?Math.round(li.dist*1852)+' m':li.dist.toFixed(2)+' nm')+'</strong> to line');
+    /* Burn = countdown remaining minus time-to-line at the closing speed
+       (SOG component along the bearing to the line). */
+    if(timerState.running&&timerState.endEpoch&&skState.sogKts!=null&&skState.cogDeg!=null){
+      var closing=skState.sogKts*Math.cos((li.brgTo-skState.cogDeg)*Math.PI/180);
+      if(closing>0.5){
+        var burn=(timerState.endEpoch-Date.now())/1000-(li.dist/closing)*3600;
+        bits.push(burn>=0?'<strong style="color:var(--t600)">burn '+_fmt(burn)+'</strong>'
+                         :'<strong style="color:var(--c400)">LATE '+_fmt(-burn)+'</strong>');
+      }
+    }
+  }
+  return bits.join(' · ')||'<span style="color:var(--color-text-secondary)">Line set — waiting for wind/GPS</span>';
+}
+/* Keep the status line live (distance/burn change as the boat moves) */
+setInterval(function(){
+  var el=document.getElementById('race-line-status');
+  if(el&&lineState.pin&&lineState.boat) el.innerHTML=lineStatusHTML();
+},1000);
+
 function _syncBtn(sign,onclick,enabled){
   return '<button onclick="'+onclick+'" aria-label="sync '+(sign==='+'?'up':'down')+'"'+(enabled?'':' disabled')+' style="width:46px;height:46px;flex-shrink:0;border-radius:50%;border:1.5px solid '+(enabled?'var(--t400)':'var(--color-border-secondary)')+';background:'+(enabled?'var(--t50)':'none')+';color:'+(enabled?'var(--t600)':'var(--color-text-secondary)')+';font-size:24px;font-weight:600;line-height:1;cursor:'+(enabled?'pointer':'default')+';opacity:'+(enabled?'1':'0.4')+';font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">'+sign+'</button>';
 }
@@ -2808,7 +2903,8 @@ function renderRaceTimerPanel(force){
   if(!el) return;
   /* Rebuild only when a state that changes the layout flips — timerTick and
      the auto monitor patch #race-timer-disp in place between rebuilds. */
-  var sig=[timerState.running?1:0,timerState.collapsed?1:0,timerState.autoStart?1:0,timerState.seqId,timerState.soundOn?1:0].join('|');
+  var sig=[timerState.running?1:0,timerState.collapsed?1:0,timerState.autoStart?1:0,timerState.seqId,timerState.soundOn?1:0,
+           lineState.pin?1:0,lineState.boat?1:0,getEffectiveLat()!=null?1:0].join('|');
   if(!force&&el.dataset.built==='1'&&el.dataset.sig===sig) return;
   var durMs=SEQUENCES[timerState.seqId].durMs;
   var sec;
@@ -2855,6 +2951,27 @@ function renderRaceTimerPanel(force){
   h+='<div style="display:flex;gap:8px">';
   h+='<button id="race-timer-btn" onclick="timerStart()" style="flex:1;padding:10px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:'+(running?'var(--c400)':'none')+';color:'+(running?'#fff':'var(--color-text-primary)')+';font-size:14px;font-weight:500;cursor:pointer;font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent">'+(running?'<i class="ti ti-player-pause" aria-hidden="true"></i> Stop':'<i class="ti ti-player-play" aria-hidden="true"></i> Start')+'</button>';
   h+='<button onclick="timerReset()"'+(running?' disabled':'')+' style="padding:10px 18px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);font-size:14px;cursor:'+(running?'default':'pointer')+';opacity:'+(running?'0.4':'1')+';font-family:var(--font-sans);min-height:42px;-webkit-tap-highlight-color:transparent"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button>';
+  h+='</div>';
+  /* start line: ping pin / RC boat + live favored-end / distance / burn */
+  var hasGPS=getEffectiveLat()!=null;
+  var pingBtn=function(end,lbl){
+    var set=!!lineState[end];
+    return '<button onclick="pingLineEnd(\''+end+'\')"'+(hasGPS?'':' disabled')
+      +' style="flex:1;padding:9px 6px;font-size:13px;font-weight:500;border:1px solid '+(set?'var(--t400)':'var(--color-border-secondary)')
+      +';border-radius:var(--border-radius-md);background:'+(set?'var(--t50)':'none')
+      +';color:'+(set?'var(--t800)':hasGPS?'var(--color-text-primary)':'var(--color-text-secondary)')
+      +';cursor:'+(hasGPS?'pointer':'default')+';opacity:'+(hasGPS?'1':'0.5')
+      +';font-family:var(--font-sans);min-height:40px;-webkit-tap-highlight-color:transparent">'+lbl+(set?' ✓':'')+'</button>';
+  };
+  h+='<div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between">';
+  h+='<span class="sec-lbl" style="margin:0">Start line</span>';
+  if(lineState.pin||lineState.boat) h+='<button onclick="clearLine()" style="background:none;border:none;color:var(--color-text-secondary);font-size:12px;cursor:pointer;padding:2px 4px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Clear</button>';
+  h+='</div>';
+  h+='<div style="display:flex;gap:8px;margin-top:8px">'+pingBtn('pin','⚑ Pin end')+pingBtn('boat','⛵ RC boat')+'</div>';
+  var ls=lineStatusHTML();
+  if(!hasGPS&&!ls) ls='<span style="color:var(--color-text-secondary)">GPS needed to ping the line</span>';
+  if(ls) h+='<div id="race-line-status" style="font-size:13px;color:var(--color-text-primary);margin-top:8px;text-align:center;line-height:1.5">'+ls+'</div>';
   h+='</div>';
   /* auto-start at gun time */
   h+='<div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)">';

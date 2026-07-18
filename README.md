@@ -36,6 +36,11 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 ### Race Tactics
 - Start timer with selectable sequences (classic **5·4·1·0** RRS sequence by
   default, plus a 10-minute option) and the matching horn schedule
+- **Start-line tools** — ping the pin and RC boat ends by GPS during the
+  pre-start; the app shows the favored end (from live wind vs line bearing),
+  distance to the line, and **time to burn** against the countdown at the
+  current closing speed. The line is drawn on the course chart and survives
+  a reload (12 h)
 - **Sync ±** buttons flanking the clock snap the remaining time to the nearest
   whole minute, to trim drift against the race committee's signals
 - **Auto-start at gun time** — enter a 24-hour start time and the sequence
