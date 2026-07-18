@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0F6E56">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <title>Flyer — Oyster SJ35</title>
 <script>
 /* Apply saved theme before first paint to avoid flash */
@@ -447,7 +450,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.10.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.11.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -2157,6 +2160,87 @@ function populateCourseDropdown(){
   if(raceState.courseId) sel.value=raceState.courseId;
 }
 
+/* ── Offline chart-tile cache (IndexedDB) ─────────────────────────
+   The Pi serves the app over boat wifi, but chart tiles come from the
+   internet — mid-bay with no cell signal the map went blank. Cache every
+   tile we successfully fetch and serve from the cache when the network
+   can't. IndexedDB works on file:// and self-signed HTTPS (where service
+   workers refuse to run), so this covers the on-boat case. */
+var TILE_CACHE_MAX=3000; /* ~50-80 MB — plenty for the racing area at all zooms */
+var _tileDB=null;
+function tileDB(){
+  return new Promise(function(res,rej){
+    if(_tileDB) return res(_tileDB);
+    if(!window.indexedDB) return rej(new Error('no idb'));
+    var rq=indexedDB.open('flyer-tiles',1);
+    rq.onupgradeneeded=function(){rq.result.createObjectStore('tiles');};
+    rq.onsuccess=function(){_tileDB=rq.result;res(_tileDB);};
+    rq.onerror=function(){rej(rq.error);};
+  });
+}
+function tilePut(key,blob){
+  tileDB().then(function(db){
+    db.transaction('tiles','readwrite').objectStore('tiles').put({b:blob,t:Date.now()},key);
+  }).catch(function(){});
+}
+function tileGet(key){
+  return tileDB().then(function(db){
+    return new Promise(function(res){
+      var rq=db.transaction('tiles').objectStore('tiles').get(key);
+      rq.onsuccess=function(){res(rq.result);};
+      rq.onerror=function(){res(null);};
+    });
+  });
+}
+/* Prune oldest entries past the cap — run once, idle, after the map opens */
+var _tilesPruned=false;
+function pruneTiles(){
+  if(_tilesPruned) return; _tilesPruned=true;
+  tileDB().then(function(db){
+    var store=db.transaction('tiles').objectStore('tiles');
+    var rows=[];
+    store.openCursor().onsuccess=function(e){
+      var cur=e.target.result;
+      if(cur){rows.push({k:cur.key,t:(cur.value&&cur.value.t)||0});cur.continue();return;}
+      if(rows.length<=TILE_CACHE_MAX) return;
+      rows.sort(function(a,b){return a.t-b.t;});
+      var kill=rows.slice(0,rows.length-TILE_CACHE_MAX).map(function(r){return r.k;});
+      var ws=db.transaction('tiles','readwrite').objectStore('tiles');
+      kill.forEach(function(k){ws.delete(k);});
+    };
+  }).catch(function(){});
+}
+/* Tile layer that fetches through the cache. Fetch OK → show + store.
+   Fetch fails (offline, or a host without CORS) → cached copy, else a
+   plain <img> request as the last resort (works online without CORS). */
+var CachedTileLayer=(typeof L!=='undefined'&&L.TileLayer)?L.TileLayer.extend({
+  createTile:function(coords,done){
+    var tile=document.createElement('img');
+    tile.alt='';
+    L.DomEvent.on(tile,'load',function(){
+      if(tile.src.indexOf('blob:')===0) URL.revokeObjectURL(tile.src);
+      done(null,tile);
+    });
+    L.DomEvent.on(tile,'error',function(){done(new Error('tile'),tile);});
+    var url=this.getTileUrl(coords);
+    fetch(url).then(function(r){
+      if(!r.ok) throw 0;
+      return r.blob();
+    }).then(function(b){
+      tilePut(url,b);
+      tile.src=URL.createObjectURL(b);
+    }).catch(function(){
+      tileGet(url).then(function(rec){
+        tile.src=rec&&rec.b?URL.createObjectURL(rec.b):url;
+      }).catch(function(){tile.src=url;});
+    });
+    return tile;
+  }
+}):null;
+function makeTileLayer(url,opts){
+  return CachedTileLayer&&window.indexedDB?new CachedTileLayer(url,opts):L.tileLayer(url,opts);
+}
+
 var npsaMap=null;
 var npsaLayerGroup=null;
 var npsaLabelGroup=null;
@@ -2186,14 +2270,15 @@ function onShowNpsa(){
     }
     if(!npsaMap){
       npsaMap=L.map('npsa-map',{zoomControl:true}).setView([39.193,-76.458],13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      makeTileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
         attribution:'&copy; <a href="https://openstreetmap.org">OSM</a> &copy; <a href="https://openseamap.org">OpenSeaMap</a>',
         maxZoom:19
       }).addTo(npsaMap);
-      L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
+      makeTileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
         maxZoom:19,opacity:1.0,
         errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
       }).addTo(npsaMap);
+      setTimeout(pruneTiles,8000); /* trim the tile cache once, off the hot path */
       npsaLayerGroup=L.layerGroup().addTo(npsaMap);
       npsaLabelGroup=L.layerGroup().addTo(npsaMap);
       npsaLineGroup=L.layerGroup().addTo(npsaMap);
@@ -3402,6 +3487,15 @@ function renderNpsaNextMark(){
 
 /* Start phone GPS watcher immediately so position is ready when needed */
 startPhoneGPS();
+
+/* Offline app shell: register the service worker where the platform allows
+   it (HTTPS with a valid cert, or localhost). The Pi's self-signed cert and
+   file:// can't run SWs — there the IndexedDB tile cache still covers the
+   chart, and the shell comes from the Pi itself. */
+if('serviceWorker' in navigator&&
+   (location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
 
 function checkForUpdate(){
   var btn=document.getElementById('update-btn');
