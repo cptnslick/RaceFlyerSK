@@ -60,21 +60,6 @@ html[data-theme=light]{
   --color-border-tertiary:#e4e4e7;
   --color-border-secondary:#d4d4d8;
 }
-.theme-toggle{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  background:var(--color-background-primary);
-  border:0.5px solid var(--color-border-tertiary);
-  border-radius:var(--border-radius-lg);
-  padding:12px 14px;
-  margin-bottom:14px;
-  cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
-  width:100%;
-  font-family:var(--font-sans);
-}
-.theme-toggle:active{background:var(--color-background-secondary)}
 .theme-seg{display:flex;background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:3px;gap:2px}
 .theme-seg-btn{
   padding:5px 12px;
@@ -171,119 +156,7 @@ html,body{
 .stat{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px;text-align:center}
 .stat-val{font-size:22px;font-weight:500;color:var(--color-text-primary)}
 .stat-lbl{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
-.add-btn{
-  width:100%;
-  padding:13px;
-  background:none;
-  border:0.5px dashed var(--color-border-secondary);
-  border-radius:var(--border-radius-md);
-  color:var(--color-text-secondary);
-  font-size:14px;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  margin-bottom:14px;
-  min-height:48px;
-  -webkit-tap-highlight-color:transparent;
-}
-.add-btn:active{background:var(--color-background-secondary)}
-.log-item{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px;margin-bottom:10px}
-.log-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px}
-.log-date{font-size:12px;color:var(--color-text-secondary)}
-.log-title{font-size:14px;font-weight:500;color:var(--color-text-primary)}
-.log-note{font-size:13px;color:var(--color-text-secondary);margin-top:4px}
-.del-btn{
-  background:none;
-  border:none;
-  color:var(--color-text-secondary);
-  cursor:pointer;
-  font-size:18px;
-  padding:4px 8px;
-  line-height:1;
-  min-width:44px;
-  min-height:44px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  border-radius:var(--border-radius-md);
-  margin:-4px -8px -4px 4px;
-  flex-shrink:0;
-  -webkit-tap-highlight-color:transparent;
-}
-.del-btn:active{background:var(--color-background-secondary)}
-.race-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:13px 14px;margin-bottom:10px}
 .empty{text-align:center;padding:36px 16px;color:var(--color-text-secondary);font-size:14px}
-.empty i{font-size:32px;display:block;margin-bottom:10px;opacity:.4}
-.modal-bg{
-  display:none;
-  position:fixed;
-  top:0;left:0;right:0;bottom:0;
-  background:rgba(0,0,0,.45);
-  align-items:flex-end;
-  justify-content:center;
-  z-index:100;
-  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  -webkit-backdrop-filter:blur(2px);
-  backdrop-filter:blur(2px);
-}
-.modal-bg.open{display:flex}
-.modal{
-  background:var(--color-background-primary);
-  border-radius:var(--border-radius-lg) var(--border-radius-lg) 0 0;
-  padding:20px 20px calc(20px + env(safe-area-inset-bottom));
-  width:100%;
-  max-width:480px;
-  border:0.5px solid var(--color-border-secondary);
-  max-height:90dvh;
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
-}
-.modal h2{font-size:16px;font-weight:600;margin-bottom:16px;color:var(--color-text-primary)}
-.field{margin-bottom:13px}
-.field label{display:block;font-size:13px;color:var(--color-text-secondary);margin-bottom:5px;font-weight:500}
-.field input,.field select,.field textarea{
-  width:100%;
-  font-size:16px; /* 16px prevents iOS auto-zoom */
-  border-radius:var(--border-radius-md);
-  border:1px solid var(--color-border-secondary);
-  background:var(--color-background-primary);
-  color:var(--color-text-primary);
-  padding:10px 12px;
-  appearance:none;
-  -webkit-appearance:none;
-  font-family:var(--font-sans);
-  line-height:1.4;
-}
-.field select{
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2371717a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;
-  background-position:right 12px center;
-  padding-right:36px;
-}
-.field input:focus,.field select:focus,.field textarea:focus{
-  outline:none;
-  border-color:var(--t400);
-  box-shadow:0 0 0 3px rgba(29,158,117,.15);
-}
-.field textarea{height:80px;resize:vertical}
-.modal-btns{display:flex;gap:8px;margin-top:16px}
-.modal-btns button{
-  flex:1;
-  padding:13px;
-  border-radius:var(--border-radius-md);
-  font-size:16px;
-  cursor:pointer;
-  font-family:var(--font-sans);
-  font-weight:500;
-  min-height:48px;
-  -webkit-tap-highlight-color:transparent;
-}
-.btn-p{background:var(--t600);color:#fff;border:none}
-.btn-p:active{background:var(--t800)}
-.btn-c{background:none;border:1px solid var(--color-border-secondary);color:var(--color-text-secondary)}
-.btn-c:active{background:var(--color-background-secondary)}
 .wind-zone{padding:14px 0 16px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:14px}
 .tws-display{font-size:56px;font-weight:700;color:var(--t600);line-height:1;text-align:center;margin:6px 0 14px;letter-spacing:-2px}
 .tws-unit{font-size:20px;font-weight:400;color:var(--color-text-secondary);letter-spacing:0}
@@ -491,7 +364,6 @@ html[data-theme=light] .hcell.hon{background:#fff}
   #app{max-width:none}
   .nav-tab{flex:1;justify-content:center}
   .screen{padding:16px 20px}
-  .modal{max-width:640px}
 }
 /* ── Two-column weather (≥700 px wide OR landscape) ── */
 @media (min-width:700px),(orientation:landscape) and (min-width:600px){
@@ -566,16 +438,16 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
       </div>
     </div>
     <p class="sec-lbl">Quick actions</p>
-    <div class="card" style="cursor:pointer" onclick="showTabById('trim')">
+    <div class="card" style="cursor:pointer" onclick="showTab('trim')">
       <div style="display:flex;align-items:center;gap:10px"><i class="ti ti-adjustments" style="font-size:20px;color:var(--t600)" aria-hidden="true"></i><div><div class="card-title">Trim guide</div><div class="card-sub">Upwind, reaching &amp; running settings</div></div></div>
     </div>
-    <div class="card" style="cursor:pointer" onclick="showTabById('npsa')">
+    <div class="card" style="cursor:pointer" onclick="showTab('npsa')">
       <div style="display:flex;align-items:center;gap:10px"><i class="ti ti-map" style="font-size:20px;color:var(--b400)" aria-hidden="true"></i><div><div class="card-title">NPSA courses</div><div class="card-sub">Nautical chart with course marks &amp; bearings</div></div></div>
     </div>
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.7.1</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.7.2</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -930,14 +802,13 @@ function syncTrimToWind(){
   if(w==null||isNaN(w)) return;
   var us=document.getElementById('up-slider');
   if(!us) return;
-  us.value=Math.min(32,Math.max(0,w));
-  updateUpwind();
-  var rs=document.getElementById('reach-slider');
-  rs.value=Math.min(32,Math.max(0,w));
-  updateReach();
-  var rns=document.getElementById('run-slider');
-  rns.value=Math.min(32,Math.max(0,w));
-  updateRun();
+  /* Sliders are integer-stepped — skip the three-panel re-render when the
+     rounded value hasn't moved (this runs on every SK delta). */
+  var target=Math.round(Math.min(32,Math.max(0,w)));
+  if(parseInt(us.value)===target) return;
+  us.value=target; updateUpwind();
+  document.getElementById('reach-slider').value=target; updateReach();
+  document.getElementById('run-slider').value=target; updateRun();
 }
 function showTab(id){
   document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});
@@ -949,7 +820,6 @@ function showTab(id){
   if(id==='npsa') onShowNpsa();
   if(id==='race') renderRaceTab();
 }
-function showTabById(id){showTab(id);}
 
 /* ── Weather ─────────────────────────────────────── */
 var wxState={loaded:false,loading:false,lat:null,lon:null,stationList:null,windKts:null,windDir:null,windGust:null,fcWindKts:null,fcWindDir:null,tideData:null,ipLocation:false};
@@ -1271,15 +1141,23 @@ function onSKData(){
   refreshSKUI();
 }
 
+/* SK deltas arrive up to ~10×/s across the subscribed paths; rebuilding all
+   the innerHTML panels per message is wasted DOM churn. Coalesce refreshes to
+   at most 4/s with a trailing timer so the final state always renders. */
+var _skUiTimer=null;
 function refreshSKUI(){
-  updateDashConditions();
-  updateSKStatusCard();
-  updateTrimLiveBar();
-  var raceEl=document.getElementById('tab-race');
-  if(raceEl&&raceEl.classList.contains('active')) renderRaceTab();
-  updateNpsaBoatMarker();
-  updateNpsaWindSpd();
-  renderNpsaNextMark();
+  if(_skUiTimer) return;
+  _skUiTimer=setTimeout(function(){
+    _skUiTimer=null;
+    updateDashConditions();
+    updateSKStatusCard();
+    updateTrimLiveBar();
+    var raceEl=document.getElementById('tab-race');
+    if(raceEl&&raceEl.classList.contains('active')) renderRaceTab();
+    updateNpsaBoatMarker();
+    updateNpsaWindSpd();
+    renderNpsaNextMark();
+  },250);
 }
 
 function fmt(val,unit,dec){
@@ -1347,9 +1225,10 @@ function skConnectFromInput(){
   val=val.replace(/^(wss?|https?):\/\//,'');
   /* Strip any trailing path */
   val=val.replace(/\/.*$/,'');
-  /* Split host:port — take last segment as port if numeric */
+  /* Split host:port — take last segment as port if numeric.
+     Default port follows the scheme toggle (3443 for wss, 3000 for ws). */
   var lastColon=val.lastIndexOf(':');
-  var port=3000;
+  var port=skState.scheme==='wss'?3443:3000;
   var host=val;
   if(lastColon!==-1){
     var maybePrt=parseInt(val.slice(lastColon+1));
@@ -1589,6 +1468,11 @@ function compass(deg){
   return d[Math.round(deg/22.5)%16];
 }
 
+/* "42m" / "1h 5m" (or "42 min" with a custom under-an-hour unit) */
+function durStr(mins,unit){
+  return mins<60?mins+(unit||'m'):Math.floor(mins/60)+'h'+(mins%60?' '+mins%60+'m':'');
+}
+
 function renderWx(loc,wx,marine,tides){
   if(wx){
     wxState.fcWindKts=Math.round(wx.wind_speed_10m);
@@ -1728,7 +1612,7 @@ function renderWx(loc,wx,marine,tides){
     var tnMs=new Date(tn.t.replace(' ','T')).getTime();
     var tnTime=new Date(tn.t.replace(' ','T')).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     var tnMins=Math.round((tnMs-tdNow)/60000);
-    var tnStr=tnMins<60?tnMins+'m':(Math.floor(tnMins/60)+'h'+(tnMins%60>0?' '+tnMins%60+'m':''));
+    var tnStr=durStr(tnMins);
     var tnH=tn.type==='H';
     html+='<div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)">';
     html+='<span style="font-size:18px;line-height:1;color:'+(tnH?'var(--t600)':'var(--b400)')+';">'+(tnH?'▲':'▼')+'</span>';
@@ -1779,7 +1663,7 @@ function updateDashConditions(){
     var bf=bft(wxState.windKts);
     var cmp=wxState.windDir!=null?compass(wxState.windDir):'--';
     var showGust=wxState.windGust&&wxState.windGust>wxState.windKts+3;
-    html+='<div class="stat" style="text-align:left;padding:13px;cursor:pointer" onclick="showTabById(\'wx\')">';
+    html+='<div class="stat" style="text-align:left;padding:13px;cursor:pointer" onclick="showTab(\'wx\')">';
     html+='<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--color-text-secondary);margin-bottom:7px">Wind</div>';
     html+='<div style="display:flex;align-items:center;gap:9px">';
     html+='<i class="ti ti-navigation" style="'+(wxState.windDir!=null?'transform:rotate('+wxState.windDir+'deg);':'')+';display:inline-block;font-size:22px;color:var(--t600);flex-shrink:0'+(wxState.windDir==null?';opacity:.3':'')+'" aria-hidden="true"></i>';
@@ -1805,10 +1689,10 @@ function updateDashConditions(){
     var isRising=next.type==='H';
     var nextMs=new Date(next.t.replace(' ','T')).getTime();
     var minsUntil=Math.round((nextMs-nowMs)/60000);
-    var untilStr=minsUntil<60?minsUntil+'m':(Math.floor(minsUntil/60)+'h'+(minsUntil%60>0?' '+minsUntil%60+'m':''));
+    var untilStr=durStr(minsUntil);
     var nextTime=new Date(next.t.replace(' ','T')).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     var stationShort=wxState.tideData.station.split(',')[0];
-    html+='<div class="stat" style="text-align:left;padding:13px;cursor:pointer" onclick="showTabById(\'wx\')">';
+    html+='<div class="stat" style="text-align:left;padding:13px;cursor:pointer" onclick="showTab(\'wx\')">';
     html+='<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--color-text-secondary);margin-bottom:7px">Tide &middot; '+stationShort+'</div>';
     html+='<div style="display:flex;align-items:center;gap:9px">';
     html+='<div style="font-size:26px;line-height:1;color:'+(isRising?'var(--t600)':'var(--b400)')+';flex-shrink:0">'+(isRising?'↑':'↓')+'</div>';
@@ -2229,7 +2113,7 @@ var npsaLayerGroup=null;
 var npsaLabelGroup=null;
 var npsaBoatMarker=null;
 var npsaClass='spin';
-var npsaLegs=[];      /* {a,b,mid,text} for each drawn leg — used by renderLegLabels */
+var npsaLegs=[];      /* {a,b,text} for each drawn leg — used by renderLegLabels */
 var npsaMarkPts=[];   /* mark latlngs, seeded as no-go boxes for label placement */
 
 /* Invalidate map on resize/rotation so Leaflet redraws at new dimensions, then
@@ -2395,7 +2279,6 @@ function selectCourse(id,noFit){
   /* Use live SK wind direction when available, fall back to course's expected wind */
   var arrowDeg=skState.windDir!=null?skState.windDir:course.windDeg;
   var arrowDir=compass(arrowDeg);
-  var liveTag=skState.windDir!=null?'TWS':'expected';
   var ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
   var arrowPos=[ne.lat+(ne.lat-sw.lat)*0.10, ne.lng-(ne.lng-sw.lng)*0.02];
   var liveWind=skState.windKts!=null?' · '+skState.windKts.toFixed(1)+' kts':'';
@@ -2601,9 +2484,7 @@ function renderWindHistory(){
   html+='<p class="sec-lbl">Wind · lull / avg / gust</p>';
   if(a.spdStats){
     var s=a.spdStats;
-    /* Mini range bar */
-    var barW=Math.max(1,s.gust-s.lull);
-    var lullPct=Math.round((s.lull/s.gust)*100);
+    /* Avg marker position on the lull→gust range bar */
     var avgPct=Math.round((s.avg/s.gust)*100);
     html+='<div class="polar-box" style="margin-bottom:12px">';
     html+='<div class="polar-stats" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:10px">';
@@ -2679,7 +2560,13 @@ function renderWindHistory(){
 }
 
 /* ── Race tab ─────────────────────────────── */
-var raceState={courseId:'',legIdx:1};
+/* Restore the saved course for the active club on load — it was already
+   persisted per club (selectCourse/setNpsaClub) but only re-read on a club
+   switch, so a page reload always came up with no course selected. */
+var raceState=(function(){
+  var saved=localStorage.getItem('course_'+npsaClub);
+  return {courseId:(saved&&getActiveCourses()[saved])?saved:'',legIdx:1};
+})();
 
 /* ── Start timer ─────────────────────────────── */
 /* Start sequences: RRS-style horn schedules keyed by seconds-remaining (k).
@@ -2876,7 +2763,7 @@ function autoSubText(){
   if(rem<=0) return g+'time has passed today';
   if(rem<=durMs) return g+'starting now';
   var mins=Math.round((rem-durMs)/60000);
-  return g+'sequence starts in '+(mins>=60?Math.floor(mins/60)+'h '+(mins%60)+'m':mins+'m');
+  return g+'sequence starts in '+durStr(mins);
 }
 function _patchDisp(sec,dim){
   var disp=document.getElementById('race-timer-disp');if(!disp) return;
@@ -3056,7 +2943,7 @@ function nextMarkCardHTML(){
     var etaStr='--',vmgStr='--';
     if(skState.sogKts!=null&&skState.sogKts>0.2){
       var etaMins=Math.round(dist/skState.sogKts*60);
-      etaStr='~'+(etaMins<60?etaMins+' min':Math.floor(etaMins/60)+'h'+(etaMins%60?' '+etaMins%60+'m':''));
+      etaStr='~'+durStr(etaMins,' min');
     }
     if(skState.sogKts!=null&&cog!=null&&brg!=null) vmgStr=(skState.sogKts*Math.cos((brg-cog)*Math.PI/180)).toFixed(1)+' kts';
     h+='<span><span style="color:var(--color-text-secondary)">Dist</span> <strong>'+dist.toFixed(2)+' nm</strong></span>';
@@ -3142,7 +3029,7 @@ function renderRaceTab(){
   /* ── 2. Next mark (compact) — shared with the Courses tab ── */
   var nextHtml='';
   if(!getRaceVariant()){
-    nextHtml+='<div class="card" style="cursor:pointer;margin-bottom:10px" onclick="showTabById(\'npsa\');onShowNpsa()">';
+    nextHtml+='<div class="card" style="cursor:pointer;margin-bottom:10px" onclick="showTab(\'npsa\')">';
     nextHtml+='<div style="display:flex;align-items:center;gap:10px">';
     nextHtml+='<i class="ti ti-map" style="font-size:20px;color:var(--b400);flex-shrink:0" aria-hidden="true"></i>';
     nextHtml+='<div><div class="card-title">No course selected</div><div class="card-sub">Select a course in the Courses tab first</div></div>';
@@ -3309,7 +3196,7 @@ function refreshEinkUI(){
         var distStr=dist.toFixed(2)+' nm';
         if(skState.sogKts!=null&&skState.sogKts>0.2){
           var etaMins=Math.round((dist/skState.sogKts)*60);
-          distStr+=' · ~'+(etaMins<60?etaMins+' min':Math.floor(etaMins/60)+'h'+(etaMins%60?' '+(etaMins%60)+'m':''));
+          distStr+=' · ~'+durStr(etaMins,' min');
         }
         distEl.textContent=distStr;
       }
@@ -3327,9 +3214,8 @@ function refreshEinkUI(){
   var timerSubEl=document.getElementById('ek-timer-sub');
   if(timerEl){
     var sec=timerState.endEpoch?Math.max(0,(timerState.endEpoch-Date.now())/1000):timerState.durationMs/1000;
-    var m=Math.floor(sec/60),s=Math.floor(sec%60);
-    timerEl.textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
-    timerEl.style.color=sec<=10?'#cc0000':sec<=60?'#cc8800':'#000';
+    timerEl.textContent=_fmt(sec);
+    timerEl.style.color=sec<=10?'#cc0000':sec<=60?'#cc8800':'#000'; /* eink stays fixed black-on-white */
     if(timerSubEl) timerSubEl.textContent=timerState.running?'Running':'Stopped';
   }
 }
@@ -3367,16 +3253,15 @@ function sendNextMarkToSK(){
   var markName=getActiveMarkNames()[markId]||markId;
   var posArr=[posLat,posLon];
   var brgRad=bearingDeg(posArr,markPos)*Math.PI/180;
-  var distM=distNm(posArr,markPos)*1852;
+  var dist=distNm(posArr,markPos);
   var values=[
     {path:'navigation.courseGreatCircle.nextPoint.position',value:{latitude:markPos[0],longitude:markPos[1]}},
     {path:'navigation.courseGreatCircle.nextPoint.bearingTrue',value:brgRad},
-    {path:'navigation.courseGreatCircle.nextPoint.distance',value:distM},
+    {path:'navigation.courseGreatCircle.nextPoint.distance',value:dist*1852},
     {path:'navigation.courseGreatCircle.nextPoint.name',value:markName}
   ];
   if(skState.sogKts!=null&&skState.sogKts>0.2){
-    var ttg=Math.round((distNm(posArr,markPos)/skState.sogKts)*3600);
-    values.push({path:'navigation.courseGreatCircle.nextPoint.timeToGo',value:ttg});
+    values.push({path:'navigation.courseGreatCircle.nextPoint.timeToGo',value:Math.round((dist/skState.sogKts)*3600)});
   }
   skSendDelta(values);
 }
