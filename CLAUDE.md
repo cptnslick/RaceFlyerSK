@@ -8,9 +8,9 @@ step, no dependencies** — everything ships in `index.html`.
 `index.html` is one ~3,200-line file (~45K tokens to read whole). The vendored
 libraries are far larger. To keep sessions cheap:
 
-- **Never read `vendor/`** — `leaflet.js` (~37K tokens), `tabler-icons.min.css`
-  (~59K tokens) and `tabler-icons.woff2` (~865 KB) are third-party assets. Treat
-  them as opaque. They are only edited by re-vendoring, never by hand.
+- **Never read `vendor/`** — `leaflet.js` (~37K tokens) is a third-party
+  library; treat it as opaque. The Tabler icon files are now a tiny **subset**
+  (see below) but still don't need reading.
 - **Don't read `index.html` whole.** Grep for the section or function you need
   and read only that range (a few hundred lines). Use the map below.
 - The section headers `/* ── … ── */` are stable anchors — grep those, not line
@@ -23,6 +23,22 @@ libraries are far larger. To keep sessions cheap:
 - `serve.py` — tiny HTTPS server for the on-boat Raspberry Pi (OpenPlotter);
   also exposes the `/update` endpoint the in-app "Check for update" button hits.
 - `vendor/` — Leaflet + Tabler icons, vendored for offline use. Do not read.
+  The Tabler font/CSS are **subset to only the ~24 `ti-*` icons the app uses**
+  (865 KB → 5 KB font, 238 KB → 1.4 KB CSS).
+
+## Adding a Tabler icon
+
+If you use a new `ti-<name>` (including ones built dynamically like
+`'ti-'+(cond?'a':'b')`), it won't render until the font subset includes it —
+the subset only contains icons that were present when it was generated.
+Regenerate from a full Tabler build (`pip install fonttools brotli`):
+1. Collect every `ti-*` used in `index.html` (grep, plus dynamic fragments).
+2. Look up each codepoint in the full `tabler-icons.min.css`
+   (`.ti-name:before{content:"\XXXX"}`).
+3. `pyftsubset full.woff2 --unicodes=U+XXXX,... --flavor=woff2
+   --output-file=vendor/fonts/tabler-icons.woff2`.
+4. Rebuild `vendor/tabler-icons.min.css` with `@font-face` + only the used
+   `.ti-*:before` rules.
 - `README.md` — feature overview.
 
 ## Where things live in `index.html` (grep these anchors)
