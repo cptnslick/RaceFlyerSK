@@ -32,6 +32,10 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 - **Laylines** to the active mark from the polar's best TWA at the current
   wind — tack lines on beats, gybe lines on runs, nothing on reaches;
   green = starboard, red = port, shifting live as the wind moves
+- **Current set & drift** — computed live from SOG/COG vs STW/compass heading
+  (90 s vector average, gated above 1.5 kts SOG): shown as a strip on the
+  Race tab and a cyan arrow on the chart, **bends the laylines to the ground
+  track**, and is published back to Signal K on `environment.current`
 - Unified next-mark card above the chart (shared with the Race tab): course,
   leg, GPS source, the course mark order, a large rounding-coloured bearing,
   and distance / ETA / VMG with leg navigation
@@ -126,6 +130,9 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 | `navigation.courseOverGroundTrue` | 1 s | TWA, vector triangle |
 | `environment.depth.belowKeel` | 2 s | Depth display |
 | `navigation.attitude` | 0.5 s | Heel angle |
+| `navigation.headingTrue` | 1 s | Set & drift |
+| `navigation.headingMagnetic` | 1 s | Heading fallback (+ variation) |
+| `navigation.magneticVariation` | 5 s | Magnetic→true correction |
 
 ## Boat
 

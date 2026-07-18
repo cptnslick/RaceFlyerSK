@@ -450,7 +450,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.12.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.13.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -877,6 +877,7 @@ var skState={
   sogKts:null, stwKts:null, heelDeg:null, depthFt:null,
   cogDeg:null,
   _speedTrue:null, _dirTrue:null, _speedApp:null, _angleApp:null,
+  _hdgTrue:null, _hdgMag:null, _magVar:null,
   _ts:{}, /* per-path receive timestamps, drive staleness expiry */
   lat:null, lon:null,
   lastUpdate:null, weatherFiredOnce:false,
@@ -945,9 +946,19 @@ var SK_SUB={context:'vessels.self',subscribe:[
   {path:'navigation.speedOverGround',period:1000},
   {path:'navigation.speedThroughWater',period:1000},
   {path:'navigation.courseOverGroundTrue',period:1000},
+  {path:'navigation.headingTrue',period:1000},
+  {path:'navigation.headingMagnetic',period:1000},
+  {path:'navigation.magneticVariation',period:5000},
   {path:'environment.depth.belowKeel',period:2000},
   {path:'navigation.attitude',period:500}
 ]};
+
+/* Compass heading (deg true): prefer headingTrue, else magnetic + variation */
+function skHeading(){
+  if(skState._hdgTrue!=null) return skState._hdgTrue;
+  if(skState._hdgMag!=null&&skState._magVar!=null) return ((skState._hdgMag+skState._magVar)%360+360)%360;
+  return null;
+}
 
 function connectSK(){
   if(skState.connected||skState.connecting||!skState.host) return;
@@ -1053,6 +1064,8 @@ function disconnectSK(){
   skState.heelDeg=null;skState.depthFt=null;
   skState.cogDeg=null;
   skState._speedTrue=null;skState._dirTrue=null;skState._speedApp=null;skState._angleApp=null;
+  skState._hdgTrue=null;skState._hdgMag=null;skState._magVar=null;
+  curBuf=[];
   skState._ts={};
   skState.lat=null;skState.lon=null;
   skState.weatherFiredOnce=false;
@@ -1084,6 +1097,9 @@ function parseSKDelta(raw){
         case 'navigation.speedOverGround':     skState.sogKts=Math.round(val*MS2KTS*10)/10;ts.sog=_now; break;
         case 'navigation.speedThroughWater':   skState.stwKts=Math.round(val*MS2KTS*10)/10;ts.stw=_now; break;
         case 'navigation.courseOverGroundTrue':skState.cogDeg=((val*RAD2DEG)%360+360)%360;ts.cog=_now; break;
+        case 'navigation.headingTrue':     skState._hdgTrue=((val*RAD2DEG)%360+360)%360;ts.hdgTrue=_now; break;
+        case 'navigation.headingMagnetic': skState._hdgMag=((val*RAD2DEG)%360+360)%360;ts.hdgMag=_now; break;
+        case 'navigation.magneticVariation':skState._magVar=val*RAD2DEG;ts.magVar=_now; break;
         case 'environment.depth.belowKeel':    skState.depthFt=Math.round(val*3.281*10)/10;ts.depth=_now; break;
         case 'navigation.attitude':
           if(val.roll!=null){skState.heelDeg=Math.round(val.roll*RAD2DEG*10)/10;ts.heel=_now;}
@@ -1109,6 +1125,9 @@ function sweepStaleSK(){
   if(stale('sog'))   skState.sogKts=null;
   if(stale('stw'))   skState.stwKts=null;
   if(stale('cog'))   skState.cogDeg=null;
+  if(stale('hdgTrue')) skState._hdgTrue=null;
+  if(stale('hdgMag'))  skState._hdgMag=null;
+  if(stale('magVar'))  skState._magVar=null;
   if(stale('depth')) skState.depthFt=null;
   if(stale('heel'))  skState.heelDeg=null;
   if(stale('pos')){skState.lat=null;skState.lon=null;} /* lets phone GPS take over */
@@ -1156,6 +1175,34 @@ setInterval(function(){
   refreshSKUI();
 },5000);
 
+/* ── Current set & drift ──────────────────────────────────────
+   current = ground velocity (SOG@COG) − water velocity (STW@heading).
+   Samples only when all four inputs are live and SOG >1.5 kts (the paddle
+   wheel is unreliable slower); vector-averaged over 90 s to kill wave and
+   helm noise. set = direction the current flows TOWARD. */
+var curBuf=[];
+var CUR_WINDOW_MS=90000, CUR_MIN_SAMPLES=10, CUR_NOISE_KTS=0.15;
+function pushCurrentSample(){
+  var hdg=skHeading();
+  if(skState.sogKts==null||skState.cogDeg==null||skState.stwKts==null||hdg==null) return;
+  if(skState.sogKts<1.5) return;
+  var cr=skState.cogDeg*Math.PI/180, hr=hdg*Math.PI/180;
+  var now=Date.now();
+  curBuf.push({t:now,
+    cx:skState.sogKts*Math.sin(cr)-skState.stwKts*Math.sin(hr),
+    cy:skState.sogKts*Math.cos(cr)-skState.stwKts*Math.cos(hr)});
+  while(curBuf.length&&curBuf[0].t<now-CUR_WINDOW_MS) curBuf.shift();
+}
+function currentEstimate(){
+  if(curBuf.length<CUR_MIN_SAMPLES) return null;
+  var sx=0,sy=0;
+  for(var i=0;i<curBuf.length;i++){sx+=curBuf[i].cx;sy+=curBuf[i].cy;}
+  var cx=sx/curBuf.length, cy=sy/curBuf.length;
+  var drift=Math.sqrt(cx*cx+cy*cy);
+  if(drift<CUR_NOISE_KTS) return null;
+  return {driftKts:drift, setDeg:(Math.atan2(cx,cy)*RAD2DEG+360)%360, cx:cx, cy:cy};
+}
+
 /* Live wind overrides the forecast on the dash; the forecast values are
    kept in fcWind* so they can be restored when live wind goes away. */
 function applyWindToWx(){
@@ -1180,6 +1227,7 @@ function onSKData(){
   /* Feed rolling average buffer, then sync trim sliders */
   if(skState.windKts!=null) pushWindSample(skState.windKts);
   pushWindHistSample();
+  pushCurrentSample();
   syncTrimToWind();
   refreshSKUI();
 }
@@ -1199,7 +1247,8 @@ function refreshSKUI(){
     if(raceEl&&raceEl.classList.contains('active')) renderRaceTab();
     updateNpsaBoatMarker();
     updateNpsaWindSpd();
-    drawLaylines(); /* wind shifts move the laylines; sig-guarded internally */
+    updateNpsaCurrentArrow();
+    drawLaylines(); /* wind or current shifts move the laylines; sig-guarded internally */
     renderNpsaNextMark();
   },250);
 }
@@ -2433,6 +2482,14 @@ function selectCourse(id,noFit){
     interactive:false,zIndexOffset:1000
   }));
 
+  /* ── Current arrow under the wind arrow (hidden until an estimate exists) ── */
+  var curPos=[ne.lat+(ne.lat-sw.lat)*0.10, sw.lng+(ne.lng-sw.lng)*0.02];
+  npsaLayerGroup.addLayer(L.marker(curPos,{
+    icon:L.divIcon({className:'',html:'<div id="npsa-cur-arrow-el"></div>',iconAnchor:[0,16],iconSize:null}),
+    interactive:false,zIndexOffset:1000
+  }));
+  updateNpsaCurrentArrow();
+
   /* ── Fit map to course with padding ── */
   if(!noFit) npsaMap.fitBounds(bounds.pad(0.18));
 
@@ -2536,17 +2593,30 @@ function drawLaylines(){
   var p=interpPolar(skState.windKts!=null?skState.windKts:12);
   var legBrg=bearingDeg(prev,mark);
   var twaLeg=Math.abs(((legBrg-W+540)%360)-180); /* 0 = dead upwind leg */
-  var twa=twaLeg<=p.upTWA+12?p.upTWA:twaLeg>=p.downTWA-12?p.downTWA:null;
+  var isBeat=twaLeg<=p.upTWA+12, isRun=twaLeg>=p.downTWA-12;
+  var twa=isBeat?p.upTWA:isRun?p.downTWA:null;
+  var btv=isBeat?p.upBTV:isRun?p.downBTV:0;
+  var cur=currentEstimate();
   /* Skip the Leaflet churn when nothing that shapes the lines has moved */
-  var sig=[Math.round(W),twa==null?'-':twa.toFixed(1),raceState.courseId,idx,npsaClass,npsaClub].join('|');
+  var sig=[Math.round(W),twa==null?'-':twa.toFixed(1),raceState.courseId,idx,npsaClass,npsaClub,
+           cur?Math.round(cur.driftKts*10)+'/'+Math.round(cur.setDeg/5):'-'].join('|');
   if(sig===_laylineSig) return;
   _laylineSig=sig;
   npsaLaylineGroup.clearLayers();
   if(twa==null) return;
   var len=Math.min(3,Math.max(1,distNm(prev,mark)*1.2));
   [[-1,'#16a34a'],[1,'#dc2626']].forEach(function(t){
-    /* Layline through the mark = reciprocal of the tack heading (W ∓ TWA) */
-    var brg=(W+t[0]*twa+180+360)%360;
+    /* Tack heading through the water; with a current estimate the layline
+       follows the GROUND track (water velocity at polar speed + current),
+       otherwise the raw heading. Layline = reciprocal through the mark. */
+    var hdg=(W+t[0]*twa+360)%360;
+    var trackBrg=hdg;
+    if(cur&&btv>0){
+      var hr=hdg*Math.PI/180;
+      var gx=btv*Math.sin(hr)+cur.cx, gy=btv*Math.cos(hr)+cur.cy;
+      trackBrg=(Math.atan2(gx,gy)*RAD2DEG+360)%360;
+    }
+    var brg=(trackBrg+180)%360;
     npsaLaylineGroup.addLayer(L.polyline([mark,destPoint(mark,brg,len)],
       {color:t[1],weight:2,dashArray:'8 6',opacity:0.8,interactive:false}));
   });
@@ -3514,11 +3584,30 @@ function renderRaceTab(){
   windHtml+=wcell(awaMag!=null?Math.round(awaMag)+'°':'--',awaSide||'','AWA',boldApp,awaSide?sideClrOf(awaSide):null);
   windHtml+=wcell(twaVal!=null?Math.round(twaVal)+'°':'--',twaSide||'','TWA',boldTrue,twaSide?sideClrOf(twaSide):null);
   windHtml+='</div>';
+  /* current set & drift strip — only when a solid estimate exists */
+  var cur=currentEstimate();
+  if(cur){
+    windHtml+='<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:-6px 0 14px;font-size:13px;color:var(--color-text-primary)">';
+    windHtml+='<span style="display:inline-block;transform:rotate('+Math.round(cur.setDeg)+'deg);color:#0891b2;font-size:15px;line-height:1">↑</span>';
+    windHtml+='<span><span style="color:var(--color-text-secondary)">Current</span> <strong>'+cur.driftKts.toFixed(1)+' kts</strong> setting '+compass(cur.setDeg)+' ('+Math.round(cur.setDeg)+'°)</span>';
+    windHtml+='</div>';
+  }
 
   /* ── 4. Wind history ── */
   var histHtml=renderWindHistory();
 
   el.innerHTML=optHtml+perfHtml+nextHtml+windHtml+histHtml;
+}
+
+/* ── Current arrow on the chart — patched in place like the wind label ── */
+function updateNpsaCurrentArrow(){
+  var el=document.getElementById('npsa-cur-arrow-el');
+  if(!el) return;
+  var cur=currentEstimate();
+  if(!cur){ el.innerHTML=''; return; }
+  el.innerHTML='<div class="npsa-wind-arrow" style="border-color:#0891b2;color:#155e75">'
+    +'<span style="display:inline-block;transform:rotate('+Math.round(cur.setDeg)+'deg);font-size:16px;line-height:1">↑</span>'
+    +'<span>'+cur.driftKts.toFixed(1)+' kts current</span></div>';
 }
 
 /* ── Live wind direction + speed in wind arrow label ────────── */
@@ -3743,7 +3832,16 @@ function sendNextMarkToSK(){
   skSendDelta(values);
 }
 
-setInterval(sendNextMarkToSK,5000);
+/* Our set & drift estimate on the standard SK path (rad / m/s) — published
+   independently of the next mark, since it needs no course selection. */
+function sendCurrentToSK(){
+  if(!skState.connected) return;
+  var cur=currentEstimate();
+  if(cur) skSendDelta([{path:'environment.current',
+    value:{setTrue:cur.setDeg*Math.PI/180,drift:cur.driftKts/MS2KTS}}]);
+}
+
+setInterval(function(){sendNextMarkToSK();sendCurrentToSK();},5000);
 </script>
 </body>
 </html>
