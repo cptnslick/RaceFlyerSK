@@ -450,7 +450,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.11.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.12.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -3042,12 +3042,96 @@ function lineFavored(){
   if(Math.abs(f)<=2) return {end:'square',deg:0};
   return f>0?{end:'Boat',deg:f}:{end:'Pin',deg:-f};
 }
+/* Favored-end trend: the line bearing is fixed once pinged, so the favored
+   history is just the last 10 min of windHistBuf mapped through the favored
+   formula — no new sampling. Positive slope = trending toward the boat end. */
+function lineFavoredTrend(){
+  if(!lineState.pin||!lineState.boat) return null;
+  var lb=bearingDeg(lineState.pin,lineState.boat);
+  var cut=Date.now()-10*60*1000;
+  var pts=windHistBuf.filter(function(s){return s.t>=cut&&s.dir!=null;});
+  if(pts.length<4) return null;
+  var xs=pts.map(function(s){return (s.t-pts[0].t)/60000;});
+  var ys=pts.map(function(s){var rel=((s.dir-lb+540)%360)-180;return 90-Math.abs(rel);});
+  var reg=_linReg(xs,ys);
+  if(!reg||Math.abs(reg.slope)<0.3) return null;
+  return {perMin:reg.slope,toward:reg.slope>0?'Boat':'Pin'};
+}
+
+/* ── Line-relative approach view ──
+   Small SVG: the line pin→RC left-to-right, favored end ringed, the boat's
+   projected position with a dashed drop to the line, per-end distances, and
+   the wind arrow — all rotated into the line frame so "am I below the line,
+   near which end, pointing where" reads at a glance. */
+function startLineSVG(){
+  var lat=getEffectiveLat(),lon=getEffectiveLon();
+  if(!lineState.pin||!lineState.boat||lat==null) return '';
+  var P=lineState.pin,B=lineState.boat;
+  var L=distNm(P,B);
+  if(L<0.005) return '';
+  var lineBrg=bearingDeg(P,B);
+  /* Boat position in the line frame (nm): x along pin→RC, y = signed
+     perpendicular (positive drawn downward — orientation-preserving, so
+     rotations stay honest and an OCS boat shows on the other side). */
+  var cosLat=Math.cos(lat*Math.PI/180);
+  var ex=(lon-P[1])*cosLat*60, ey=(lat-P[0])*60;
+  var th=lineBrg*Math.PI/180, ux=Math.sin(th), uy=Math.cos(th);
+  var along=ex*ux+ey*uy;
+  var perp=ex*uy-ey*ux;
+  var W=360,H=120,lineY=44,xPin=43,xRC=317;
+  var scale=(xRC-xPin)/L;
+  var bx=Math.max(8,Math.min(W-8,xPin+along*scale));
+  var by=Math.max(12,Math.min(H-8,lineY+perp*scale));
+  var projX=Math.max(xPin,Math.min(xRC,xPin+along*scale));
+  var fav=lineFavored();
+  var rot=function(brg){return (90+brg-lineBrg)%360;} /* screen rotation for a bearing, up-pointing glyph */
+  var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-height:130px">';
+  /* wind arrow, line-relative */
+  if(skState.windDir!=null){
+    var wx=(xPin+xRC)/2;
+    s+='<g transform="translate('+wx+',16) rotate('+rot(skState.windDir).toFixed(0)+')">'
+      +'<path d="M0,-8 L4,4 L0,1 L-4,4 Z" fill="#0ea5e9"/></g>';
+    s+='<text x="'+(wx+14)+'" y="20" font-size="9" fill="var(--color-text-secondary)" font-family="var(--font-sans)">wind</text>';
+  }
+  /* the line */
+  s+='<line x1="'+xPin+'" y1="'+lineY+'" x2="'+xRC+'" y2="'+lineY+'" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>';
+  /* favored ring */
+  if(fav&&fav.deg>0){
+    var fx=fav.end==='Pin'?xPin:xRC;
+    s+='<circle cx="'+fx+'" cy="'+lineY+'" r="12" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 3"/>';
+  }
+  /* ends + labels + per-end distances */
+  var dPin=distNm([lat,lon],P), dRC=distNm([lat,lon],B);
+  var endTxt=function(d){return d<0.15?Math.round(d*1852)+' m':d.toFixed(2)+' nm';};
+  var nearPin=dPin<=dRC;
+  var eta=function(d){ /* time to this end at current speed */
+    if(skState.sogKts==null||skState.sogKts<=0.5) return '';
+    return ' · '+_fmt(d/skState.sogKts*3600);
+  };
+  s+='<rect x="'+(xPin-5)+'" y="'+(lineY-5)+'" width="10" height="10" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>';
+  s+='<rect x="'+(xRC-5)+'" y="'+(lineY-5)+'" width="10" height="10" fill="#1d4ed8" stroke="#fff" stroke-width="1.5"/>';
+  s+='<text x="'+xPin+'" y="'+(lineY-14)+'" font-size="10" font-weight="700" fill="var(--color-text-primary)" text-anchor="middle" font-family="var(--font-sans)">PIN</text>';
+  s+='<text x="'+xRC+'" y="'+(lineY-14)+'" font-size="10" font-weight="700" fill="var(--color-text-primary)" text-anchor="middle" font-family="var(--font-sans)">RC</text>';
+  s+='<text x="'+xPin+'" y="'+(H-4)+'" font-size="9" fill="var(--color-text-secondary)" text-anchor="start" font-family="var(--font-sans)">'+endTxt(dPin)+(nearPin?eta(dPin):'')+'</text>';
+  s+='<text x="'+xRC+'" y="'+(H-4)+'" font-size="9" fill="var(--color-text-secondary)" text-anchor="end" font-family="var(--font-sans)">'+endTxt(dRC)+(!nearPin?eta(dRC):'')+'</text>';
+  /* drop line + boat */
+  s+='<line x1="'+bx.toFixed(1)+'" y1="'+by.toFixed(1)+'" x2="'+projX.toFixed(1)+'" y2="'+lineY+'" stroke="var(--color-text-secondary)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>';
+  var boatFill=usingPhoneGPS()?'#7c3aed':'#2563eb';
+  var boatRot=skState.cogDeg!=null?rot(skState.cogDeg):0;
+  s+='<g transform="translate('+bx.toFixed(1)+','+by.toFixed(1)+') rotate('+boatRot.toFixed(0)+')">'
+    +'<path d="M0,-10 L7,9 L0,4 L-7,9 Z" fill="'+boatFill+'" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></g>';
+  s+='</svg>';
+  return s;
+}
+
 function lineStatusHTML(){
   if(!lineState.pin&&!lineState.boat) return '';
   if(!lineState.pin||!lineState.boat) return '<span style="color:var(--a400)">One end set — ping the other to arm the line</span>';
   var bits=[];
   var fav=lineFavored();
   if(fav) bits.push(fav.deg===0?'Line square':'<strong>'+fav.end+' favored '+fav.deg+'°</strong>');
+  var tr=lineFavoredTrend();
+  if(tr) bits.push('<span style="color:var(--color-text-secondary)">trending '+tr.toward+' '+Math.abs(tr.perMin).toFixed(1)+'°/min</span>');
   var lat=getEffectiveLat(),lon=getEffectiveLon();
   if(lat!=null){
     var li=lineInfo([lat,lon]);
@@ -3065,10 +3149,13 @@ function lineStatusHTML(){
   }
   return bits.join(' · ')||'<span style="color:var(--color-text-secondary)">Line set — waiting for wind/GPS</span>';
 }
-/* Keep the status line live (distance/burn change as the boat moves) */
+/* Keep the status line + approach view live as the boat moves */
 setInterval(function(){
+  if(!lineState.pin||!lineState.boat) return;
   var el=document.getElementById('race-line-status');
-  if(el&&lineState.pin&&lineState.boat) el.innerHTML=lineStatusHTML();
+  if(el) el.innerHTML=lineStatusHTML();
+  var sv=document.getElementById('race-line-svg');
+  if(sv) sv.innerHTML=startLineSVG();
 },1000);
 
 function _syncBtn(sign,onclick,enabled){
@@ -3149,6 +3236,8 @@ function renderRaceTimerPanel(force){
   if(lineState.pin||lineState.boat) h+='<button onclick="clearLine()" style="background:none;border:none;color:var(--color-text-secondary);font-size:12px;cursor:pointer;padding:2px 4px;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Clear</button>';
   h+='</div>';
   h+='<div style="display:flex;gap:8px;margin-top:8px">'+pingBtn('pin','⚑ Pin end')+pingBtn('boat','⛵ RC boat')+'</div>';
+  /* line-relative approach view (empty until both ends + GPS) */
+  h+='<div id="race-line-svg" style="margin-top:6px">'+startLineSVG()+'</div>';
   var ls=lineStatusHTML();
   if(!hasGPS&&!ls) ls='<span style="color:var(--color-text-secondary)">GPS needed to ping the line</span>';
   if(ls) h+='<div id="race-line-status" style="font-size:13px;color:var(--color-text-primary);margin-top:8px;text-align:center;line-height:1.5">'+ls+'</div>';
