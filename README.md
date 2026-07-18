@@ -29,6 +29,9 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 - Active next-mark highlighted with a larger circle and dashed ring
 - Live boat icon that follows GPS position and rotates to COG
 - Wind arrow updated in real time from SK data
+- **Laylines** to the active mark from the polar's best TWA at the current
+  wind — tack lines on beats, gybe lines on runs, nothing on reaches;
+  green = starboard, red = port, shifting live as the wind moves
 - Unified next-mark card above the chart (shared with the Race tab): course,
   leg, GPS source, the course mark order, a large rounding-coloured bearing,
   and distance / ETA / VMG with leg navigation
