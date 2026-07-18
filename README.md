@@ -20,7 +20,11 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 - Three selectable course sets: NPSA North Point (A–T), NPSA Series 3 /
   Joint Series (A–N, start/finish at PW-6), and RCRA Rock Creek
 - All courses with spinnaker and non-spin variants
-- Course lines with bearing and distance labels
+- Course lines with bearing/distance labels that auto-declutter: they sit on
+  the line when there's room and slide to open water with a thin leader line
+  when legs bunch up (e.g. windward-leeward courses that reuse marks),
+  re-placing themselves as you zoom
+- Landscape two-column layout — next-mark card beside a full-height map
 - Color-coded mark circles (port = red, starboard = green)
 - Active next-mark highlighted with a larger circle and dashed ring
 - Live boat icon that follows GPS position and rotates to COG

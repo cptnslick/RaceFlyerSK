@@ -504,18 +504,25 @@ html[data-theme=light] .hcell.hon{background:#fff}
   .top-subtitle{display:none}
   .nav-tabs{top:calc(32px + env(safe-area-inset-top))}
   .nav-tab{padding:8px 14px;min-height:36px;font-size:12px}
-  /* NPSA tab fills remaining viewport height */
+  /* NPSA tab fills remaining viewport height. Two-column grid so the next-mark
+     card lives in a narrow scrollable side column and the map fills the rest —
+     otherwise the card eats the height and the map collapses to a thin bar. */
   #tab-npsa.screen.active{
     padding:8px 10px 0;
-    display:flex;flex-direction:column;
+    display:grid;
+    grid-template-columns:minmax(210px,280px) 1fr;
+    grid-template-rows:auto 1fr;
+    grid-template-areas:"header header" "side map";
+    column-gap:10px;
     height:calc(100dvh - 32px - env(safe-area-inset-top) - 36px);
     overflow:hidden
   }
-  .npsa-header{display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;flex-shrink:0}
+  .npsa-header{grid-area:header;display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;flex-shrink:0}
   .npsa-header .npsa-seg{margin-bottom:0;flex-shrink:0;width:auto}
   .npsa-header .npsa-sel-row{flex:1;margin-bottom:0}
   .npsa-header .npsa-course-sel{flex:1;margin-bottom:0}
-  #npsa-map{flex:1;height:auto !important;margin-bottom:0}
+  #npsa-next-mark{grid-area:side;min-height:0;overflow-y:auto;margin-bottom:0 !important}
+  #npsa-map{grid-area:map;min-height:0;height:100% !important;margin-bottom:0}
   /* trim: side-by-side polar + settings on wide landscape */
   .wind-zone{padding:10px 0 12px}
   .tws-display{font-size:44px;margin:4px 0 10px}
@@ -568,7 +575,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.6.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.7.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -2222,12 +2229,19 @@ function populateCourseDropdown(){
 
 var npsaMap=null;
 var npsaLayerGroup=null;
+var npsaLabelGroup=null;
 var npsaBoatMarker=null;
 var npsaClass='spin';
+var npsaLegs=[];      /* {a,b,mid,text} for each drawn leg — used by renderLegLabels */
+var npsaMarkPts=[];   /* mark latlngs, seeded as no-go boxes for label placement */
 
-/* Invalidate map on resize/rotation so Leaflet redraws at new dimensions */
+/* Invalidate map on resize/rotation so Leaflet redraws at new dimensions, then
+   re-fit and re-place labels for the new aspect ratio (portrait<->landscape). */
 window.addEventListener('resize',function(){
-  if(npsaMap) setTimeout(function(){ npsaMap.invalidateSize(); },150);
+  if(npsaMap) setTimeout(function(){
+    npsaMap.invalidateSize();
+    if(raceState.courseId) selectCourse(raceState.courseId);
+  },150);
 });
 
 function onShowNpsa(){
@@ -2249,6 +2263,10 @@ function onShowNpsa(){
         errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
       }).addTo(npsaMap);
       npsaLayerGroup=L.layerGroup().addTo(npsaMap);
+      npsaLabelGroup=L.layerGroup().addTo(npsaMap);
+      /* Leg labels are placed in screen space, so re-run when zoom changes the
+         pixel geometry (pan needs no redraw — labels are geographic). */
+      npsaMap.on('zoomend',renderLegLabels);
     }
     npsaMap.invalidateSize();
     /* Sync club dropdown and populate course list */
@@ -2312,11 +2330,14 @@ function selectCourse(id,noFit){
 
   /* ── Clear old course layers ── */
   npsaLayerGroup.clearLayers();
+  if(npsaLabelGroup) npsaLabelGroup.clearLayers();
+  npsaLegs=[]; npsaMarkPts=[];
 
   var latlngs=marks.map(function(m){return aMarks[m]||getMarkFallback();});
   var bounds=L.latLngBounds(latlngs);
 
-  /* ── Course lines with bearing/distance labels ── */
+  /* ── Course lines (leg labels are placed separately by renderLegLabels so
+     they can be offset off the line and de-collided at the current zoom) ── */
   for(var i=0;i<latlngs.length-1;i++){
     var a=latlngs[i], b=latlngs[i+1];
     var d=distNm(a,b);
@@ -2325,17 +2346,7 @@ function selectCourse(id,noFit){
     npsaLayerGroup.addLayer(
       L.polyline([a,b],{color:'#2563eb',weight:2.5,opacity:0.85,dashArray:'6 4'})
     );
-    /* Label at midpoint */
-    var mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
-    npsaLayerGroup.addLayer(L.marker(mid,{
-      icon:L.divIcon({
-        className:'',
-        html:'<div class="npsa-leg-label">'+Math.round(brg)+'° · '+d.toFixed(1)+'nm</div>',
-        iconAnchor:[40,10],
-        iconSize:null
-      }),
-      interactive:false
-    }));
+    npsaLegs.push({a:a,b:b,text:Math.round(brg)+'° · '+d.toFixed(1)+'nm'});
   }
 
   /* ── Mark circles (drawn after lines so they sit on top) ── */
@@ -2346,6 +2357,7 @@ function selectCourse(id,noFit){
     var pos=aMarks[m]||getMarkFallback();
     var posKey=pos[0].toFixed(5)+','+pos[1].toFixed(5);
     var name=aNames[m]||m;
+    npsaMarkPts.push(pos);
     if(r===null){
       if(seenPos[posKey]) return; /* don't double-draw start */
       seenPos[posKey]=true;
@@ -2405,7 +2417,78 @@ function selectCourse(id,noFit){
   /* ── Fit map to course with padding ── */
   if(!noFit) npsaMap.fitBounds(bounds.pad(0.18));
 
+  /* Place the leg labels for the current zoom (zoomend re-runs on any change). */
+  renderLegLabels();
+
   renderNpsaNextMark();
+}
+
+/* ── Leg-label placement ──────────────────────────────────────────
+   Bearing/distance labels sit right on the course lines and bunch up on
+   windward-leeward courses that reuse marks. Place them in screen space:
+   try on-line first, then step perpendicular (both sides, increasing) until
+   the label clears every other label and mark. When it ends up off the line,
+   draw a thin leader back to the leg midpoint. Re-run on zoomend so labels
+   move to clear areas as the chart zooms out and sit on the line when zoomed
+   in and there's room. */
+function _rectHits(r,list){
+  var n=0;
+  for(var i=0;i<list.length;i++){var o=list[i];
+    if(r.x<o.x+o.w&&r.x+r.w>o.x&&r.y<o.y+o.h&&r.y+r.h>o.y) n++;
+  }
+  return n;
+}
+function renderLegLabels(){
+  if(!npsaMap||!npsaLabelGroup) return;
+  npsaLabelGroup.clearLayers();
+  var placed=[]; /* pixel boxes already occupied */
+  /* Seed with mark positions so labels never cover a mark circle */
+  npsaMarkPts.forEach(function(ll){
+    var p=npsaMap.latLngToLayerPoint(L.latLng(ll));
+    placed.push({x:p.x-15,y:p.y-15,w:30,h:30});
+  });
+  npsaLegs.forEach(function(leg){
+    var pa=npsaMap.latLngToLayerPoint(L.latLng(leg.a));
+    var pb=npsaMap.latLngToLayerPoint(L.latLng(leg.b));
+    var mx=(pa.x+pb.x)/2, my=(pa.y+pb.y)/2;
+    var dx=pb.x-pa.x, dy=pb.y-pa.y;
+    var len=Math.sqrt(dx*dx+dy*dy)||1;
+    var ux=dx/len, uy=dy/len;      /* unit along the leg */
+    var nx=-uy, ny=ux;             /* unit perpendicular to the leg */
+    /* pixel size of the rendered label (11px text + 6px h-pad + 1px border each
+       side, plus a little breathing room so neighbours don't kiss) */
+    var w=leg.text.length*6.9+20, h=22;
+    /* Try the on-line spot first, then slide along the leg and step off it
+       perpendicular. Score every candidate by how many placed boxes it hits,
+       tie-broken by how far it strays from the line, and take the best — so a
+       label lands on the line when there's room and drifts to open water when
+       there isn't. */
+    var alongs=[0,-28,28,-56,56], perps=[0],off;
+    for(off=18;off<=150;off+=18){ perps.push(off); perps.push(-off); }
+    var chosen=null, bestCost=1e18;
+    for(var ai=0;ai<alongs.length&&bestCost>0;ai++){
+      for(var pi=0;pi<perps.length;pi++){
+        var al=alongs[ai], pp=perps[pi];
+        var cx=mx+ux*al+nx*pp, cy=my+uy*al+ny*pp;
+        var rect={x:cx-w/2,y:cy-h/2,w:w,h:h};
+        var cost=_rectHits(rect,placed)*100000+Math.abs(pp)*10+Math.abs(al);
+        if(cost<bestCost){ bestCost=cost; chosen={cx:cx,cy:cy,rect:rect}; if(cost===0) break; }
+      }
+    }
+    placed.push(chosen.rect);
+    /* leader line from the on-line anchor out to a label that moved off it */
+    var moved=Math.abs(chosen.cx-mx)+Math.abs(chosen.cy-my);
+    if(moved>8){
+      npsaLabelGroup.addLayer(L.polyline([
+        npsaMap.layerPointToLatLng(L.point(mx,my)),
+        npsaMap.layerPointToLatLng(L.point(chosen.cx,chosen.cy))
+      ],{color:'#2563eb',weight:1,opacity:0.45,interactive:false}));
+    }
+    npsaLabelGroup.addLayer(L.marker(npsaMap.layerPointToLatLng(L.point(chosen.cx,chosen.cy)),{
+      icon:L.divIcon({className:'',html:'<div class="npsa-leg-label">'+leg.text+'</div>',iconAnchor:[w/2,h/2],iconSize:null}),
+      interactive:false
+    }));
+  });
 }
 
 /* ── Wind history helpers ────────────────────────────────────── */
