@@ -60,6 +60,13 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
   rounding-coloured box, and Distance · ETA · VMG on one line
 - Compact 3×2 wind grid (SOG/AWS/TWS · COG/AWA/TWA) that bolds the apparent pair
   upwind and the true pair downwind
+- **Polar performance** — live % of target boat speed (STW vs the polar at the
+  current TWA/TWS) as a colour-coded strip on the Race tab and a chip in the
+  Trim live bar
+- **Auto leg advance** — sail within 0.1 nm of the mark and away again and the
+  leg advances itself, with an Undo toast
+- Wind history survives a reload (persisted locally), so shift analysis isn't
+  lost to an accidental refresh
 - **Wind history** — lull / avg / gust over the last 10 minutes
 - **Wind shift analysis** — detects oscillating or trending conditions from the last 30 minutes of SK data, estimates amplitude, cycle period, current lift/header status, and time to next shift
 
