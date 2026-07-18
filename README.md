@@ -90,6 +90,14 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 - At-a-glance conditions summary
 - Quick access to all tabs
 
+### Offline / PWA
+- **Chart tiles are cached in IndexedDB** as you browse — mid-bay with no
+  cell signal, the map keeps working from every tile you've seen (capped at
+  ~3,000 tiles, oldest pruned)
+- Installable PWA (manifest + icons); on proper HTTPS hosting a service
+  worker keeps the whole app shell available offline (network-first, so
+  updates still land immediately)
+
 ## Usage
 
 1. Open `index.html` in a browser (locally via `file://` for full ws:// support, or from iCloud/hosted for wss://)

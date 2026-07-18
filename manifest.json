@@ -1,0 +1,15 @@
+{
+  "name": "RaceFlyer SK",
+  "short_name": "Flyer",
+  "description": "Sailing race companion for the Oyster SJ35 Flyer — courses, polars, start timer, live Signal K data",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0F6E56",
+  "theme_color": "#0F6E56",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -22,6 +22,11 @@ libraries are far larger. To keep sessions cheap:
   the final `<script>`).
 - `serve.py` — tiny HTTPS server for the on-boat Raspberry Pi (OpenPlotter);
   also exposes the `/update` endpoint the in-app "Check for update" button hits.
+- `sw.js` — service worker: offline app shell, network-first (so `/update`
+  stays fresh). Chart tiles are NOT cached here — the app caches them in
+  IndexedDB (`CachedTileLayer` in index.html) because SWs refuse to run on
+  the Pi's self-signed cert.
+- `manifest.json` + `icons/` — PWA install metadata (add to home screen).
 - `vendor/` — Leaflet + Tabler icons, vendored for offline use. Do not read.
   The Tabler font/CSS are **subset to only the ~24 `ti-*` icons the app uses**
   (865 KB → 5 KB font, 238 KB → 1.4 KB CSS).
