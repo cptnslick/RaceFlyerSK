@@ -447,7 +447,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.9.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.10.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -653,6 +653,34 @@ function polarHTML(p,mode){
   if(mode==='up') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — UPWIND VMG</div><div class="polar-stats" style="grid-template-columns:1fr 1fr"><div class="polar-stat"><div class="polar-stat-val">'+p.upTWA.toFixed(1)+'</div><div class="polar-stat-lbl">Best TWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upAWA.toFixed(1)+'</div><div class="polar-stat-lbl">Target AWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upBTV.toFixed(2)+'</div><div class="polar-stat-lbl">Target BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.upVMG.toFixed(2)+'</div><div class="polar-stat-lbl">VMG</div></div></div></div>';
   if(mode==='reach') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — REACH TARGETS</div><div class="polar-stats"><div class="polar-stat"><div class="polar-stat-val">'+p.reach90.toFixed(2)+'</div><div class="polar-stat-lbl">Beam 90° BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.reach120.toFixed(2)+'</div><div class="polar-stat-lbl">Broad 120° BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+SYM_CROSS+'°</div><div class="polar-stat-lbl">Spin crossover</div></div></div></div>';
   if(mode==='run') return '<div class="polar-box"><div class="polar-box-title">ORC POLAR — DOWNWIND VMG</div><div class="polar-stats"><div class="polar-stat"><div class="polar-stat-val">'+p.downTWA.toFixed(1)+'</div><div class="polar-stat-lbl">Best TWA (deg)</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.downBTV.toFixed(2)+'</div><div class="polar-stat-lbl">Target BSP</div></div><div class="polar-stat"><div class="polar-stat-val">'+p.downVMG.toFixed(2)+'</div><div class="polar-stat-lbl">VMG</div></div></div></div>';
+}
+
+/* Target boat speed at (tws, twa) — piecewise linear across the cert's four
+   TWA anchor points (beat optimum, 90° beam, 120° broad, run optimum).
+   Clamped outside the range: pinching below upTWA or running deeper than
+   downTWA compares against the nearest optimum, which correctly reads as
+   a speed deficit. */
+function polarTargetBSP(tws,twa){
+  var p=interpPolar(tws);
+  var pts=[[p.upTWA,p.upBTV],[90,p.reach90],[120,p.reach120],[p.downTWA,p.downBTV]];
+  if(twa<=pts[0][0]) return pts[0][1];
+  for(var i=0;i<3;i++){
+    if(twa<=pts[i+1][0]){
+      var t=(twa-pts[i][0])/(pts[i+1][0]-pts[i][0]);
+      return Math.round((pts[i][1]+(pts[i+1][1]-pts[i][1])*t)*100)/100;
+    }
+  }
+  return pts[3][1];
+}
+/* {pct,target,speed,label} vs the polar, or null when it can't be computed
+   (needs true wind ≥6 kts — the cert floor — a TWA, and STW or SOG). */
+function polarPerf(tws,twa){
+  var speed=skState.stwKts!=null?skState.stwKts:skState.sogKts;
+  if(tws==null||twa==null||speed==null||tws<6||skState.windLabel==='AWS') return null;
+  var tgt=polarTargetBSP(tws,twa);
+  if(!tgt) return null;
+  return {pct:Math.min(199,Math.round(speed/tgt*100)),target:tgt,speed:speed,
+          label:skState.stwKts!=null?'STW':'SOG'};
 }
 
 /* Bands are contiguous and non-overlapping so the badge, sail call and range
@@ -1253,6 +1281,14 @@ function updateTrimLiveBar(){
   if(skState.stwKts!=null) parts.push('STW <span>'+skState.stwKts+' kts</span>');
   if(skState.heelDeg!=null) parts.push('Heel <span>'+skState.heelDeg+'°</span>');
   if(skState.depthFt!=null) parts.push('Depth <span>'+skState.depthFt+' ft</span>');
+  /* live % of polar target — the trim feedback number */
+  var twa=null;
+  if(skState.windDir!=null&&skState.cogDeg!=null){
+    var raw=((skState.windDir-skState.cogDeg)+360)%360;
+    twa=raw<=180?raw:360-raw;
+  }
+  var perf=polarPerf(skState.windKts,twa);
+  if(perf) parts.push('Polar <span>'+perf.pct+'%</span>');
   el.innerHTML='<div class="sk-trim-bar">'+parts.join(' &middot; ')+'</div>';
 }
 
@@ -3188,6 +3224,25 @@ function renderRaceTab(){
       +'<i class="ti ti-wind" style="font-size:22px;display:block;margin-bottom:8px;opacity:.35"></i>Live wind data needed for polar headings</div>';
   }
 
+  /* ── 1b. Performance vs polar — live % of target boat speed ── */
+  var perfHtml='';
+  var perf=polarPerf(tws,twaVal);
+  if(perf){
+    var pClr=perf.pct>=97?'var(--t600)':perf.pct>=88?'#f59e0b':'var(--c400)';
+    perfHtml='<div class="polar-box" style="margin-bottom:10px;padding:9px 13px">';
+    perfHtml+='<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">';
+    perfHtml+='<span style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;color:var(--t600)">Polar performance</span>';
+    perfHtml+='<span style="font-size:12px;color:var(--t800)">'+perf.label+' '+perf.speed.toFixed(1)+' / target '+perf.target.toFixed(2)+' kts</span>';
+    perfHtml+='</div>';
+    perfHtml+='<div style="display:flex;align-items:center;gap:10px;margin-top:6px">';
+    perfHtml+='<span style="font-size:26px;font-weight:800;line-height:1;color:'+pClr+';font-variant-numeric:tabular-nums;min-width:74px">'+perf.pct+'%</span>';
+    /* bar spans 0–110%; the tick at 100% is the polar target */
+    perfHtml+='<div style="flex:1;position:relative;height:8px;border-radius:4px;background:var(--color-background-primary);border:0.5px solid var(--t100)">';
+    perfHtml+='<div style="height:100%;border-radius:4px;background:'+pClr+';width:'+Math.min(100,perf.pct/110*100)+'%"></div>';
+    perfHtml+='<div style="position:absolute;top:-3px;bottom:-3px;left:'+(100/110*100).toFixed(1)+'%;width:2px;background:var(--t800);opacity:.55"></div>';
+    perfHtml+='</div></div></div>';
+  }
+
   /* ── 2. Next mark (compact) — shared with the Courses tab ── */
   var nextHtml='';
   if(!getRaceVariant()){
@@ -3221,7 +3276,7 @@ function renderRaceTab(){
   /* ── 4. Wind history ── */
   var histHtml=renderWindHistory();
 
-  el.innerHTML=optHtml+nextHtml+windHtml+histHtml;
+  el.innerHTML=optHtml+perfHtml+nextHtml+windHtml+histHtml;
 }
 
 /* ── Live wind direction + speed in wind arrow label ────────── */
