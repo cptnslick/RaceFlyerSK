@@ -447,7 +447,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.8.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.9.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -1156,6 +1156,7 @@ function refreshSKUI(){
     if(raceEl&&raceEl.classList.contains('active')) renderRaceTab();
     updateNpsaBoatMarker();
     updateNpsaWindSpd();
+    drawLaylines(); /* wind shifts move the laylines; sig-guarded internally */
     renderNpsaNextMark();
   },250);
 }
@@ -2111,7 +2112,8 @@ function populateCourseDropdown(){
 var npsaMap=null;
 var npsaLayerGroup=null;
 var npsaLabelGroup=null;
-var npsaLineGroup=null;   /* pinged start line — survives course redraws */
+var npsaLineGroup=null;    /* pinged start line — survives course redraws */
+var npsaLaylineGroup=null; /* laylines to the active mark */
 var npsaBoatMarker=null;
 var npsaClass='spin';
 var npsaLegs=[];      /* {a,b,text} for each drawn leg — used by renderLegLabels */
@@ -2147,6 +2149,7 @@ function onShowNpsa(){
       npsaLayerGroup=L.layerGroup().addTo(npsaMap);
       npsaLabelGroup=L.layerGroup().addTo(npsaMap);
       npsaLineGroup=L.layerGroup().addTo(npsaMap);
+      npsaLaylineGroup=L.layerGroup().addTo(npsaMap);
       /* Leg labels are placed in screen space, so re-run when zoom changes the
          pixel geometry (pan needs no redraw — labels are geographic). */
       npsaMap.on('zoomend',renderLegLabels);
@@ -2302,6 +2305,7 @@ function selectCourse(id,noFit){
 
   /* Place the leg labels for the current zoom (zoomend re-runs on any change). */
   renderLegLabels();
+  drawLaylines();
 
   renderNpsaNextMark();
 }
@@ -2371,6 +2375,47 @@ function renderLegLabels(){
       icon:L.divIcon({className:'',html:'<div class="npsa-leg-label">'+leg.text+'</div>',iconAnchor:[w/2,h/2],iconSize:null}),
       interactive:false
     }));
+  });
+}
+
+/* ── Laylines to the active mark ────────────────────────────────
+   Close-hauled (or gybe) lines through the next mark from the polar's best
+   TWA at the current wind. Drawn only when the leg is actually a beat
+   (leg TWA within upTWA+12°) or a run (within 12° of downTWA) — a fetch or
+   reach has no layline. Green = starboard tack/gybe, red = port, matching
+   the tack colouring used elsewhere. Uses live wind, falling back to the
+   course's expected wind (same fallback as the wind arrow). */
+function destPoint(from,brg,dNm){
+  var br=brg*Math.PI/180;
+  return [from[0]+dNm/60*Math.cos(br), from[1]+dNm/60*Math.sin(br)/Math.cos(from[0]*Math.PI/180)];
+}
+var _laylineSig='';
+function drawLaylines(){
+  if(!npsaLaylineGroup) return;
+  var v=getRaceVariant();
+  var course=raceState.courseId?getActiveCourses()[raceState.courseId]:null;
+  var W=skState.windDir!=null?skState.windDir:course?course.windDeg:null;
+  if(!v||W==null){npsaLaylineGroup.clearLayers();_laylineSig='';return;}
+  var idx=Math.min(raceState.legIdx,v.marks.length-1);
+  var aMarks=getActiveMarks();
+  var mark=aMarks[v.marks[idx]], prev=aMarks[v.marks[idx-1]];
+  if(!mark||!prev||distNm(prev,mark)<0.05){npsaLaylineGroup.clearLayers();_laylineSig='';return;}
+  var p=interpPolar(skState.windKts!=null?skState.windKts:12);
+  var legBrg=bearingDeg(prev,mark);
+  var twaLeg=Math.abs(((legBrg-W+540)%360)-180); /* 0 = dead upwind leg */
+  var twa=twaLeg<=p.upTWA+12?p.upTWA:twaLeg>=p.downTWA-12?p.downTWA:null;
+  /* Skip the Leaflet churn when nothing that shapes the lines has moved */
+  var sig=[Math.round(W),twa==null?'-':twa.toFixed(1),raceState.courseId,idx,npsaClass,npsaClub].join('|');
+  if(sig===_laylineSig) return;
+  _laylineSig=sig;
+  npsaLaylineGroup.clearLayers();
+  if(twa==null) return;
+  var len=Math.min(3,Math.max(1,distNm(prev,mark)*1.2));
+  [[-1,'#16a34a'],[1,'#dc2626']].forEach(function(t){
+    /* Layline through the mark = reciprocal of the tack heading (W ∓ TWA) */
+    var brg=(W+t[0]*twa+180+360)%360;
+    npsaLaylineGroup.addLayer(L.polyline([mark,destPoint(mark,brg,len)],
+      {color:t[1],weight:2,dashArray:'8 6',opacity:0.8,interactive:false}));
   });
 }
 
