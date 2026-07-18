@@ -44,6 +44,13 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
   distance to the line, and **time to burn** against the countdown at the
   current closing speed. The line is drawn on the course chart and survives
   a reload (12 h)
+- **Line-relative approach view** — a schematic of the line (pin left, RC
+  right) with your boat's position and heading, a drop line to the nearest
+  point, the wind arrow, the favored end ringed, and per-end distances with
+  time-to-reach the nearer end
+- **Favored-end trend** — the last 10 min of wind history mapped onto the
+  pinged line: "trending Pin 0.8°/min" tells you which end is coming good
+  before the gun
 - **Sync ±** buttons flanking the clock snap the remaining time to the nearest
   whole minute, to trim drift against the race committee's signals
 - **Auto-start at gun time** — enter a 24-hour start time and the sequence
