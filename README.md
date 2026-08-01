@@ -78,6 +78,10 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
   leg advances itself, with an Undo toast
 - Wind history survives a reload (persisted locally), so shift analysis isn't
   lost to an accidental refresh
+- **Screen stays awake on the Race tab** — the display won't sleep mid-approach,
+  and the app keeps publishing to Signal K instead of being frozen by a
+  backgrounded tab. Released as soon as you leave the tab, so it doesn't burn
+  battery elsewhere
 - **Wind history** — lull / avg / gust over the last 10 minutes
 - **Wind shift analysis** — detects oscillating or trending conditions from the last 30 minutes of SK data, estimates amplitude, cycle period, current lift/header status, and time to next shift
 
