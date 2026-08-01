@@ -153,12 +153,22 @@ the Raymarine display. Both plugins have to be enabled on the server; the
 sentence builders read the v2 course tree only, so the older
 `navigation.courseGreatCircle.*` paths reach nothing.
 
-If the Course API can't be used (Signal K security refuses the write, or the
-server predates v2) or the Course Provider plugin isn't running, the app fills
-`navigation.course.*` in itself over the WebSocket — including a signed
-cross-track error — so the sentences still go out. That fallback also carries
-the mark letter, so the display shows **K** instead of Signal K's generic
-`DP`. Which mode is in use is reported on the Signal K card on the Dashboard.
+The Course API measures the leg from the server's **own** position fix — it sets
+the leg origin from `navigation.position` and refuses a destination outright
+when it doesn't have one. So if the boat's GPS isn't reaching Signal K and
+you're running off the phone's GPS, the app skips the request entirely and
+publishes the course itself; that isn't a workaround, it's the only thing that
+can compute the leg. It retries once a minute, so it switches over on its own
+as soon as the boat's fix comes up.
+
+The same fallback covers a refused write (Signal K security), a server that
+predates v2, and the Course Provider plugin not running: the app fills
+`navigation.course.*` in over the WebSocket — including a signed cross-track
+error — so the sentences still go out. That path also carries the mark letter,
+so the display shows **K** instead of Signal K's generic `DP`.
+
+Which mode is in use is reported on the Signal K card on the Dashboard, and a
+refusal shows the server's own explanation rather than just a status code.
 
 ## Boat
 

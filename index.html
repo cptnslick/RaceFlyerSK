@@ -460,7 +460,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.14.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.14.1</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -3842,7 +3842,8 @@ function skSendDelta(values){
    care which source wrote it. That path also carries the mark letter, so the
    display reads "K" rather than the server's generic "DP". */
 var ARRIVAL_CIRCLE_M=Math.round(AUTO_ARRIVE_NM*1852);  /* arrival alarm in step with auto leg advance */
-var skCourse={dest:'',mode:'',err:'',putAt:0,pending:false};
+var SK_PUT_RETRY_MS=60000;
+var skCourse={dest:'',mode:'',err:'',putAt:0,retryAt:0,pending:false};
 
 function skRestBase(){
   return (skState.scheme==='wss'?'https':'http')+'://'+skState.host+':'+skState.port;
@@ -3888,17 +3889,40 @@ function skCourseCalcLive(){
   return skState._ts.xte!=null&&Date.now()-skState._ts.xte<15000;
 }
 
+/* The server explains its refusals — either {state,statusCode,message} from
+   the handler or an array of schema-validation errors. Keep it short enough
+   to read on the status card; a body isn't guaranteed, so parsing is guarded. */
+function skErrText(status,body){
+  var m='';
+  if(body){
+    if(body.message) m=String(body.message);
+    else if(Array.isArray(body)&&body.length) m=JSON.stringify(body[0]);
+    else if(typeof body==='string') m=body;
+  }
+  m=m.replace(/^Error:\s*/,'');
+  if(m.length>120) m=m.slice(0,117)+'…';
+  return m?('HTTP '+status+': '+m):('HTTP '+status);
+}
+
 function putSKDestination(leg){
   skCourse.pending=true;
+  skCourse.retryAt=Date.now()+SK_PUT_RETRY_MS;
   fetch(skRestBase()+'/signalk/v2/api/vessels/self/navigation/course/destination',{
     method:'PUT',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({position:{latitude:leg.next[0],longitude:leg.next[1]},arrivalCircle:ARRIVAL_CIRCLE_M})
   }).then(function(r){
-    skCourse.pending=false;
-    if(r.ok){skCourse.mode='api';skCourse.err='';skCourse.putAt=Date.now();}
-    else{skCourse.mode='delta';skCourse.err='HTTP '+r.status;}
-    updateSKStatusCard();
+    if(r.ok){
+      skCourse.pending=false;
+      skCourse.mode='api';skCourse.err='';skCourse.putAt=Date.now();
+      updateSKStatusCard();
+      return;
+    }
+    return r.json().catch(function(){return null;}).then(function(body){
+      skCourse.pending=false;
+      skCourse.mode='delta';skCourse.err=skErrText(r.status,body);
+      updateSKStatusCard();
+    });
   }).catch(function(){
     skCourse.pending=false;skCourse.mode='delta';skCourse.err='no REST';
     updateSKStatusCard();
@@ -3947,7 +3971,22 @@ function syncCourseToSK(){
     return;
   }
   var key=courseDestKey();
-  if(key!==skCourse.dest&&!skCourse.pending){
+  /* The Course API measures the leg from the server's *own* fix — it sets
+     previousPoint from navigation.position and refuses outright when that
+     isn't there. Racing off the phone's GPS with no fix on the boat is the
+     one case where publishing the course ourselves isn't a workaround but
+     the only thing that can work, so don't bother asking. */
+  var skHasFix=skState.lat!=null;
+  if(!skHasFix){
+    if(skCourse.dest!==key){skCourse.dest=key;skCourse.putAt=0;}
+    skCourse.mode='nofix';skCourse.err='';
+    /* Same courtesy as the API path: if something on the server is somehow
+       still computing the leg, don't write the same paths from a second source. */
+    if(!skCourseCalcLive()) publishCourseV2(leg);
+    return;
+  }
+  if(!skCourse.pending&&(key!==skCourse.dest||
+      (skCourse.mode!=='api'&&Date.now()>=skCourse.retryAt))){
     skCourse.dest=key;
     putSKDestination(leg);
   }
@@ -3964,6 +4003,7 @@ function skCourseStatusText(){
   if(!skState.connected||!skCourse.dest) return '';
   if(skCourse.mode==='api'&&skCourseCalcLive()) return 'Next mark set via Course API &middot; cross-track live to NMEA 0183';
   if(skCourse.mode==='api') return 'Next mark set via Course API, but no course calculations are coming back — enable the <strong>Course Provider</strong> plugin on the server.';
+  if(skCourse.mode==='nofix') return 'Signal K has no GPS fix of its own, so it won\'t accept a destination — publishing course data directly from this device\'s GPS.';
   if(skCourse.mode==='delta') return 'Course API unavailable ('+skCourse.err+') — publishing course data directly instead.';
   return '';
 }
