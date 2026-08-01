@@ -460,7 +460,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.14.1</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -872,6 +872,7 @@ function showTab(id){
   if(id==='trim') syncTrimToWind();
   if(id==='npsa') onShowNpsa();
   if(id==='race') renderRaceTab();
+  syncWakeLock();
 }
 
 /* ── Weather ─────────────────────────────────────── */
@@ -933,11 +934,39 @@ function stopPhoneGPS(){
   }
 }
 
+/* ── Screen wake lock ──────────────────────────────
+   A phone that locks mid-approach is useless, and a sleeping tab stops the
+   timers that publish to Signal K. Hold the screen awake while the Race tab
+   is up — not on the other tabs, no reason to burn the battery there.
+   Browsers drop the lock whenever the page is hidden, so it has to be
+   re-acquired on the way back; unsupported or refused (low battery, no user
+   gesture yet) is fine, we just carry on. */
+var _wakeLock=null;
+function wakeLockWanted(){
+  var el=document.getElementById('tab-race');
+  return !document.hidden&&!!el&&el.classList.contains('active');
+}
+function syncWakeLock(){
+  if(!navigator.wakeLock) return;
+  if(wakeLockWanted()){
+    if(_wakeLock) return;
+    navigator.wakeLock.request('screen').then(function(s){
+      if(!wakeLockWanted()){try{s.release();}catch(e){}return;} /* left the tab mid-request */
+      _wakeLock=s;
+      s.addEventListener('release',function(){_wakeLock=null;});
+    }).catch(function(){});
+  } else if(_wakeLock){
+    var s=_wakeLock;_wakeLock=null;
+    try{s.release();}catch(e){}
+  }
+}
+
 /* High-accuracy watch keeps the GPS radio hot — pause it while the tab
    is hidden. Last fix is kept so the UI has something on return. */
 document.addEventListener('visibilitychange',function(){
   if(document.hidden) stopPhoneGPS();
   else startPhoneGPS();
+  syncWakeLock();
 });
 
 function getEffectiveLat(){ return skState.lat!=null?skState.lat:phoneGPS.lat; }
