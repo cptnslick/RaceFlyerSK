@@ -460,7 +460,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.1</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -878,12 +878,17 @@ function showTab(id){
 /* ── Weather ─────────────────────────────────────── */
 var wxState={loaded:false,loading:false,lat:null,lon:null,stationList:null,windKts:null,windDir:null,windGust:null,fcWindKts:null,fcWindDir:null,tideData:null,ipLocation:false};
 
+/* Storage access can throw (blocked cookies, quota) — never let that kill the whole script */
+function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+function lsDel(k){try{localStorage.removeItem(k);}catch(e){}}
+
 /* ── Signal K live sensor state ──────────────────── */
 var skState={
   ws:null, connected:false, connecting:false, reconnectTimer:null,
-  host:localStorage.getItem('sk_host')||'',
-  scheme:localStorage.getItem('sk_scheme')||'wss',
-  port:(function(){var s=localStorage.getItem('sk_scheme')||'wss';var p=parseInt(localStorage.getItem('sk_port'));if(!p||(s==='wss'&&p===3000))return 3443;if(s==='ws'&&p===3443)return 3000;return p;})(),
+  host:lsGet('sk_host')||'',
+  scheme:lsGet('sk_scheme')||'wss',
+  port:(function(){var s=lsGet('sk_scheme')||'wss';var p=parseInt(lsGet('sk_port'));if(!p||(s==='wss'&&p===3000))return 3443;if(s==='ws'&&p===3443)return 3000;return p;})(),
   windKts:null, windDir:null, windLabel:'TWS',
   sogKts:null, stwKts:null, heelDeg:null, depthFt:null,
   cogDeg:null,
@@ -941,23 +946,35 @@ function stopPhoneGPS(){
    Browsers drop the lock whenever the page is hidden, so it has to be
    re-acquired on the way back; unsupported or refused (low battery, no user
    gesture yet) is fine, we just carry on. */
-var _wakeLock=null;
+var _wakeLock=null,_wakeLockPending=false;
 function wakeLockWanted(){
+  if(document.hidden) return false;
+  /* A running start sequence needs the screen whatever tab is up — throttled
+     timers skip the horns. (window. guard: timerState is declared later.) */
+  if(window.timerState&&timerState.running) return true;
   var el=document.getElementById('tab-race');
-  return !document.hidden&&!!el&&el.classList.contains('active');
+  return !!el&&el.classList.contains('active');
+}
+function _releaseWakeLock(s){
+  try{var p=s.release();if(p&&p.catch)p.catch(function(){});}catch(e){}
 }
 function syncWakeLock(){
   if(!navigator.wakeLock) return;
   if(wakeLockWanted()){
-    if(_wakeLock) return;
+    if(_wakeLock||_wakeLockPending) return;
+    _wakeLockPending=true;
     navigator.wakeLock.request('screen').then(function(s){
-      if(!wakeLockWanted()){try{s.release();}catch(e){}return;} /* left the tab mid-request */
+      _wakeLockPending=false;
+      if(!wakeLockWanted()){_releaseWakeLock(s);return;} /* left the tab mid-request */
       _wakeLock=s;
-      s.addEventListener('release',function(){_wakeLock=null;});
-    }).catch(function(){});
+      s.addEventListener('release',function(){
+        _wakeLock=null;
+        syncWakeLock(); /* the OS can revoke while we're still visible (battery saver) — re-acquire */
+      });
+    }).catch(function(){_wakeLockPending=false;});
   } else if(_wakeLock){
     var s=_wakeLock;_wakeLock=null;
-    try{s.release();}catch(e){}
+    _releaseWakeLock(s);
   }
 }
 
@@ -1006,9 +1023,9 @@ function connectSK(){
   if(skState.reconnectTimer){clearTimeout(skState.reconnectTimer);skState.reconnectTimer=null;}
   if(skState.connectTimer){clearTimeout(skState.connectTimer);skState.connectTimer=null;}
   skState.connecting=true;
-  localStorage.setItem('sk_host',skState.host);
-  localStorage.setItem('sk_port',skState.port);
-  localStorage.setItem('sk_scheme',skState.scheme);
+  lsSet('sk_host',skState.host);
+  lsSet('sk_port',skState.port);
+  lsSet('sk_scheme',skState.scheme);
   updateSKStatusCard();
   try{
     /* ?subscribe=none → server waits for our explicit SK_SUB instead of firehosing all paths */
@@ -1087,7 +1104,7 @@ function cancelSKConnect(){
 
 function disconnectSK(){
   skState.host='';
-  localStorage.removeItem('sk_host');
+  lsDel('sk_host');
   if(skState.reconnectTimer){clearTimeout(skState.reconnectTimer);skState.reconnectTimer=null;}
   if(skState.connectTimer){clearTimeout(skState.connectTimer);skState.connectTimer=null;}
   if(skState.ws){
@@ -1107,7 +1124,7 @@ function disconnectSK(){
   skState._speedTrue=null;skState._dirTrue=null;skState._speedApp=null;skState._angleApp=null;
   skState._hdgTrue=null;skState._hdgMag=null;skState._magVar=null;
   curBuf=[];
-  skCourse.dest='';skCourse.mode='';skCourse.err='';
+  skCourse.dest='';skCourse.mode='';skCourse.err='';skCourse.pending=false;skCourse.putAt=0;skCourse.retryAt=0;
   skState._ts={};
   skState.lat=null;skState.lon=null;
   skState.weatherFiredOnce=false;
@@ -1182,26 +1199,28 @@ function sweepStaleSK(){
 }
 
 function recomputeSKWind(){
-  /* Prefer true wind; fall back to computing it from apparent + COG via vector triangle */
+  /* Prefer true wind; fall back to computing it from apparent + heading (COG fallback) via vector triangle */
   if(skState._speedTrue!=null&&skState._dirTrue!=null){
     skState.windKts=Math.round(skState._speedTrue*MS2KTS*10)/10;
     skState.windDir=Math.round(skState._dirTrue);
     skState.windLabel='TWS';
   } else if(skState._speedApp!=null&&skState._angleApp!=null){
-    if(skState.cogDeg!=null&&skState.sogKts!=null){
+    var hdg=skHeading(); /* AWA is bow-relative — rotate by heading; COG only as fallback */
+    var refDeg=hdg!=null?hdg:skState.cogDeg;
+    if(refDeg!=null&&skState.cogDeg!=null&&skState.sogKts!=null){
       /* Vector triangle: True = Apparent + Boat velocity
          tx/ty in N-E components (N = cos, E = sin convention) */
-      var cogRad=skState.cogDeg*Math.PI/180;
+      var refRad=refDeg*Math.PI/180, cogRad=skState.cogDeg*Math.PI/180;
       var sogMs=skState.sogKts/MS2KTS;
-      var tx=-skState._speedApp*Math.sin(cogRad+skState._angleApp)+sogMs*Math.sin(cogRad);
-      var ty=-skState._speedApp*Math.cos(cogRad+skState._angleApp)+sogMs*Math.cos(cogRad);
+      var tx=-skState._speedApp*Math.sin(refRad+skState._angleApp)+sogMs*Math.sin(cogRad);
+      var ty=-skState._speedApp*Math.cos(refRad+skState._angleApp)+sogMs*Math.cos(cogRad);
       var twsMs=Math.sqrt(tx*tx+ty*ty);
       skState.windKts=Math.round(twsMs*MS2KTS*10)/10;
       /* Direction is meaningless when TWS ~= 0 (boat motion exactly cancels apparent) */
       skState.windDir=twsMs>0.05?Math.round((Math.atan2(tx,ty)*RAD2DEG+180+360)%360):null;
       skState.windLabel='cTWS'; /* computed from apparent */
     } else {
-      /* No COG — apparent angle is bow-relative, not a compass bearing */
+      /* No heading/COG — apparent angle is bow-relative, not a compass bearing */
       skState.windKts=Math.round(skState._speedApp*MS2KTS*10)/10;
       skState.windDir=null;
       skState.windLabel='AWS';
@@ -1209,6 +1228,7 @@ function recomputeSKWind(){
   } else {
     skState.windKts=null;
     skState.windDir=null;
+    skState.windLabel='TWS';
   }
 }
 
@@ -1353,9 +1373,9 @@ function updateSKStatusCard(){
 
 function toggleSKScheme(){
   skState.scheme=skState.scheme==='wss'?'ws':'wss';
-  if(skState.scheme==='wss'&&skState.port===3000){skState.port=3443;localStorage.setItem('sk_port',3443);}
-  else if(skState.scheme==='ws'&&skState.port===3443){skState.port=3000;localStorage.setItem('sk_port',3000);}
-  localStorage.setItem('sk_scheme',skState.scheme);
+  if(skState.scheme==='wss'&&skState.port===3000){skState.port=3443;lsSet('sk_port',3443);}
+  else if(skState.scheme==='ws'&&skState.port===3443){skState.port=3000;lsSet('sk_port',3000);}
+  lsSet('sk_scheme',skState.scheme);
   updateSKStatusCard();
 }
 
@@ -1461,7 +1481,7 @@ function loadWeather(){
 
 function getIPLocation(){
   /* Try two services in sequence — Safari ITP may block one but not both */
-  return fetch('https://freeipapi.com/api/json')
+  return fetchT('https://freeipapi.com/api/json')
     .then(function(r){return r.json();})
     .then(function(d){
       if(!d.latitude) throw new Error('no data');
@@ -1469,7 +1489,7 @@ function getIPLocation(){
       return {coords:{latitude:+d.latitude,longitude:+d.longitude,accuracy:5000}};
     })
     .catch(function(){
-      return fetch('https://ipapi.co/json/')
+      return fetchT('https://ipapi.co/json/')
         .then(function(r){return r.json();})
         .then(function(d){
           if(!d.latitude) throw new Error('no data');
@@ -1520,8 +1540,19 @@ function getGPS(){
   });
 }
 
+/* fetch with a deadline — one stalled request on marine wifi must not wedge
+   the Promise.allSettled in loadWeather (and its loading flag) forever */
+function fetchT(url,ms){
+  if(!window.AbortController) return fetch(url);
+  var ctl=new AbortController();
+  var t=setTimeout(function(){ctl.abort();},ms||15000);
+  return fetch(url,{signal:ctl.signal}).then(
+    function(r){clearTimeout(t);return r;},
+    function(e){clearTimeout(t);throw e;});
+}
+
 function fetchLocName(lat,lon){
-  return fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lon+'&zoom=10')
+  return fetchT('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lon+'&zoom=10')
     .then(function(r){return r.json();})
     .then(function(d){
       var a=d.address||{};
@@ -1534,11 +1565,12 @@ function fetchWx(lat,lon){
     '&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,surface_pressure,visibility'+
     '&minutely_15=wind_speed_10m,wind_direction_10m,wind_gusts_10m'+
     '&wind_speed_unit=kn&temperature_unit=fahrenheit&forecast_days=2&timezone=auto';
-  return fetch(url).then(function(r){return r.json();}).then(function(d){
+  return fetchT(url).then(function(r){return r.json();}).then(function(d){
     /* An error payload has no .current — without this check NaN flows into
        the wind state and bft(NaN) renders as F12 Hurricane */
-    if(d.error||!d.current) throw new Error(d.reason||'Weather unavailable');
+    if(d.error||!d.current||typeof d.current.wind_speed_10m!=='number'||typeof d.current.wind_direction_10m!=='number') throw new Error(d.reason||'Weather unavailable');
     var cur=d.current;
+    if(typeof cur.wind_gusts_10m!=='number') cur.wind_gusts_10m=null;
     cur.minutely_15=d.minutely_15;
     return cur;
   });
@@ -1547,7 +1579,7 @@ function fetchWx(lat,lon){
 function fetchMarine(lat,lon){
   var url='https://marine-api.open-meteo.com/v1/marine?latitude='+lat.toFixed(4)+'&longitude='+lon.toFixed(4)+
     '&current=wave_height,wave_direction,wave_period';
-  return fetch(url).then(function(r){return r.json();}).then(function(d){
+  return fetchT(url).then(function(r){return r.json();}).then(function(d){
     if(d.error) throw new Error(d.reason||'Marine data unavailable');
     return d.current;
   });
@@ -1567,8 +1599,9 @@ function fetchTides(lat,lon){
       wxState.stationList=cached.stations;
       stPromise=Promise.resolve(cached.stations);
     } else {
-      stPromise=fetch(listUrl).then(function(r){return r.json();}).then(function(d){
+      stPromise=fetchT(listUrl,30000).then(function(r){return r.json();}).then(function(d){
         var slim=(d.stations||[]).map(function(s){return {id:s.id,name:s.name,lat:s.lat,lng:s.lng};});
+        if(!slim.length) throw new Error('NOAA station list unavailable');
         wxState.stationList=slim;
         try{localStorage.setItem('noaa_stations',JSON.stringify({ts:Date.now(),stations:slim}));}catch(e){}
         return slim;
@@ -1588,7 +1621,7 @@ function fetchTides(lat,lon){
     var url='https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=raceflyer'+
       '&begin_date='+fmt(today)+'&end_date='+fmt(tomorrow)+'&datum=MLLW&station='+nearest.id+
       '&time_zone=lst_ldt&interval=hilo&units=english&format=json';
-    return fetch(url).then(function(r){return r.json();}).then(function(d){
+    return fetchT(url).then(function(r){return r.json();}).then(function(d){
       if(d.error) throw new Error(d.error.message||'Tide error');
       return {station:nearest.name,predictions:d.predictions||[]};
     });
@@ -1865,10 +1898,10 @@ function updateDashConditions(){
 function setTheme(t){
   if(t){
     document.documentElement.setAttribute('data-theme',t);
-    localStorage.setItem('flyer-theme',t);
+    lsSet('flyer-theme',t);
   } else {
     document.documentElement.removeAttribute('data-theme');
-    localStorage.removeItem('flyer-theme');
+    lsDel('flyer-theme');
   }
   updateThemeSeg();
 }
@@ -2218,7 +2251,7 @@ var RCRA_COURSES={
     spin: {marks:['A','6','2','A'],rounds:[null,'S','P',null],dist:5.27}}
 };
 
-var npsaClub=localStorage.getItem('npsa_club')||'npsa'; /* 'npsa' | 'rcra' */
+var npsaClub=lsGet('npsa_club')||'npsa'; /* 'npsa' | 'rcra' */
 
 /* npsa3 (Series 3) reuses the NPSA marks/names — only the course set differs */
 function getActiveMarks()    { return npsaClub==='rcra'?RCRA_MARKS:MARKS; }
@@ -2228,13 +2261,13 @@ function getMarkFallback()   { return npsaClub==='rcra'?[39.190,-76.490]:[39.200
 
 function setNpsaClub(club){
   /* Save current course under the OLD club key before switching */
-  if(raceState.courseId) localStorage.setItem('course_'+npsaClub,raceState.courseId);
+  if(raceState.courseId) lsSet('course_'+npsaClub,raceState.courseId);
   npsaClub=club;
-  localStorage.setItem('npsa_club',club);
+  lsSet('npsa_club',club);
   var clubSel=document.getElementById('npsa-club-sel');
   if(clubSel) clubSel.value=club;
   /* Restore the previously-selected course for THIS club, if it still exists */
-  var savedCourse=localStorage.getItem('course_'+club);
+  var savedCourse=lsGet('course_'+club);
   var courses=getActiveCourses();
   raceState.courseId=(savedCourse&&courses[savedCourse])?savedCourse:'';
   raceState.legIdx=1;
@@ -2402,11 +2435,11 @@ function setNpsaClass(c){
   npsaClass=c;
   document.getElementById('nsb-spin').classList.toggle('active',c==='spin');
   document.getElementById('nsb-nspin').classList.toggle('active',c==='nspin');
-  var sel=document.getElementById('npsa-course-sel');
-  if(sel&&sel.value) selectCourse(sel.value);
   /* Variants for the same course can have different mark counts — clamp legIdx */
   var v=getRaceVariant();
   if(v) raceState.legIdx=Math.max(1,Math.min(v.marks.length-1,raceState.legIdx));
+  var sel=document.getElementById('npsa-course-sel');
+  if(sel&&sel.value) selectCourse(sel.value);
   var raceEl=document.getElementById('tab-race');
   if(raceEl&&raceEl.classList.contains('active')) renderRaceTab();
 }
@@ -2436,7 +2469,7 @@ function selectCourse(id,noFit){
     document.getElementById('npsa-next-mark').innerHTML='';
     return;
   }
-  if(id!==raceState.courseId){raceState.courseId=id;raceState.legIdx=1;localStorage.setItem('course_'+npsaClub,id);}
+  if(id!==raceState.courseId){raceState.courseId=id;raceState.legIdx=1;lsSet('course_'+npsaClub,id);}
   var course=activeCourses[id];
   var variant=course[npsaClass];
   var marks=variant.marks;
@@ -2804,7 +2837,7 @@ function renderWindHistory(){
   if(a.spdStats){
     var s=a.spdStats;
     /* Avg marker position on the lull→gust range bar */
-    var avgPct=Math.round((s.avg/s.gust)*100);
+    var avgPct=s.gust>0?Math.round((s.avg/s.gust)*100):0;
     html+='<div class="polar-box" style="margin-bottom:12px">';
     html+='<div class="polar-stats" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:10px">';
     html+='<div class="polar-stat"><div class="polar-stat-val" style="color:var(--b400)">'+s.lull.toFixed(1)+'</div><div class="polar-stat-lbl">Lull kts</div></div>';
@@ -2883,7 +2916,7 @@ function renderWindHistory(){
    persisted per club (selectCourse/setNpsaClub) but only re-read on a club
    switch, so a page reload always came up with no course selected. */
 var raceState=(function(){
-  var saved=localStorage.getItem('course_'+npsaClub);
+  var saved=lsGet('course_'+npsaClub);
   return {courseId:(saved&&getActiveCourses()[saved])?saved:'',legIdx:1};
 })();
 
@@ -2912,9 +2945,9 @@ var SEQ_ORDER=['54100','10min'];
 
 var timerState={
   running:false, endEpoch:null,
-  seqId:(SEQUENCES[localStorage.getItem('timer_seq')]?localStorage.getItem('timer_seq'):'54100'),
+  seqId:(SEQUENCES[lsGet('timer_seq')]?lsGet('timer_seq'):'54100'),
   durationMs:5*60000,
-  soundOn:localStorage.getItem('timer_sound')!=='0',
+  soundOn:lsGet('timer_sound')!=='0',
   collapsed:false,
   autoStart:false, startClock:'',
   _iv:null,_autoIv:null,_beeped:{}
@@ -2959,20 +2992,6 @@ function _timerPattern(pats){
   pats.forEach(function(p){setTimeout(function(){_timerHorn(p.d,p.v);},p.t||0);});
 }
 
-/* Keep the screen awake during the start sequence — backgrounded tabs get
-   their timers throttled and the countdown horns are silently skipped */
-var _wakeLock=null;
-function acquireWakeLock(){
-  if(!navigator.wakeLock) return;
-  navigator.wakeLock.request('screen').then(function(wl){_wakeLock=wl;}).catch(function(){});
-}
-function releaseWakeLock(){
-  if(_wakeLock){try{_wakeLock.release();}catch(e){} _wakeLock=null;}
-}
-document.addEventListener('visibilitychange',function(){
-  if(!document.hidden&&timerState.running) acquireWakeLock();
-});
-
 function _fmt(sec){sec=Math.max(0,sec);var m=Math.floor(sec/60),s=Math.floor(sec%60);return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;}
 function _dispColor(sec){return sec<=10?'var(--c400)':sec<=60?'#f59e0b':'var(--color-text-primary)';}
 
@@ -2989,7 +3008,7 @@ function timerTick(){
   if(sec<=0&&timerState.running){
     timerState.running=false;
     if(timerState._iv){clearInterval(timerState._iv);timerState._iv=null;}
-    releaseWakeLock();
+    syncWakeLock();
     /* Start gun fired — collapse to a heading to free space (tap to restore) */
     timerState.collapsed=true;
     renderRaceTimerPanel(true);
@@ -3003,8 +3022,10 @@ function _beginCountdown(endEpoch){
   try{_timerACtx().resume();}catch(e){}
   try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}
   stopAutoMonitor();
-  acquireWakeLock();
   timerState.running=true;
+  /* Keep the screen awake for the whole sequence — throttled background
+     timers silently skip the countdown horns */
+  syncWakeLock();
   timerState.endEpoch=endEpoch;
   timerState._beeped={};
   var k0=Math.ceil(Math.max(0,(endEpoch-Date.now())/1000));
@@ -3018,7 +3039,7 @@ function _beginCountdown(endEpoch){
 function _stopCountdown(){
   timerState.running=false;
   if(timerState._iv){clearInterval(timerState._iv);timerState._iv=null;}
-  releaseWakeLock();
+  syncWakeLock();
   renderRaceTimerPanel(true);
 }
 function timerStart(){
@@ -3028,7 +3049,7 @@ function timerStart(){
 function timerReset(){
   if(timerState.running) return; /* locked while running — Stop first */
   if(timerState._iv){clearInterval(timerState._iv);timerState._iv=null;}
-  releaseWakeLock();
+  syncWakeLock();
   timerState.endEpoch=null;timerState._beeped={};
   renderRaceTimerPanel(true);
   if(timerState.autoStart) startAutoMonitor();
@@ -3934,26 +3955,40 @@ function skErrText(status,body){
 }
 
 function putSKDestination(leg){
+  var key=skCourse.dest, base=skRestBase();
   skCourse.pending=true;
   skCourse.retryAt=Date.now()+SK_PUT_RETRY_MS;
-  fetch(skRestBase()+'/signalk/v2/api/vessels/self/navigation/course/destination',{
+  var ctl=window.AbortController?new AbortController():null;
+  var kill=ctl?setTimeout(function(){ctl.abort();},10000):null;
+  fetch(base+'/signalk/v2/api/vessels/self/navigation/course/destination',{
     method:'PUT',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({position:{latitude:leg.next[0],longitude:leg.next[1]},arrivalCircle:ARRIVAL_CIRCLE_M})
+    body:JSON.stringify({position:{latitude:leg.next[0],longitude:leg.next[1]},arrivalCircle:ARRIVAL_CIRCLE_M}),
+    signal:ctl?ctl.signal:undefined
   }).then(function(r){
+    if(kill) clearTimeout(kill);
+    skCourse.pending=false;
+    /* Deselected or disconnected while this was in flight — the server now
+       holds a leg nobody wants; take it back out. A *retarget* (dest is some
+       new key) needs no delete, the next PUT overwrites it. */
+    if(skCourse.dest!==key){
+      if(r.ok&&!skCourse.dest) fetch(base+'/signalk/v2/api/vessels/self/navigation/course',{method:'DELETE'}).catch(function(){});
+      return;
+    }
     if(r.ok){
-      skCourse.pending=false;
       skCourse.mode='api';skCourse.err='';skCourse.putAt=Date.now();
       updateSKStatusCard();
       return;
     }
     return r.json().catch(function(){return null;}).then(function(body){
-      skCourse.pending=false;
       skCourse.mode='delta';skCourse.err=skErrText(r.status,body);
       updateSKStatusCard();
     });
   }).catch(function(){
-    skCourse.pending=false;skCourse.mode='delta';skCourse.err='no REST';
+    if(kill) clearTimeout(kill);
+    skCourse.pending=false;
+    if(skCourse.dest!==key) return;
+    skCourse.mode='delta';skCourse.err='no REST';
     updateSKStatusCard();
   });
 }
@@ -3961,7 +3996,7 @@ function putSKDestination(leg){
 function clearSKDestination(){
   if(skCourse.mode==='api'){
     try{fetch(skRestBase()+'/signalk/v2/api/vessels/self/navigation/course',{method:'DELETE'}).catch(function(){});}catch(e){}
-  } else if(skCourse.mode==='delta'){
+  } else if(skCourse.mode==='delta'||skCourse.mode==='nofix'){
     skSendDelta([{path:'navigation.course.nextPoint',value:null},
                  {path:'navigation.course.previousPoint',value:null}]);
   }
@@ -3993,7 +4028,7 @@ function publishCourseV2(leg){
 }
 
 function syncCourseToSK(){
-  if(!skState.connected){skCourse.dest='';skCourse.mode='';skCourse.err='';return;}
+  if(!skState.connected){skCourse.dest='';skCourse.mode='';skCourse.err='';skCourse.pending=false;return;}
   var leg=courseLegPoints();
   if(!leg){
     if(skCourse.dest){clearSKDestination();skCourse.dest='';skCourse.mode='';skCourse.err='';}
