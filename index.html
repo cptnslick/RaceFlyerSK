@@ -355,6 +355,16 @@ html[data-theme=light] .hcell.hon{background:#fff}
 .sk-scheme-btn{padding:9px 10px;border-radius:var(--border-radius-md);border:1px solid var(--color-border-secondary);background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans);white-space:nowrap;min-height:44px;letter-spacing:.3px;-webkit-tap-highlight-color:transparent}
 .sk-scheme-btn.wss{background:var(--t50);border-color:var(--t400);color:var(--t700,var(--t600))}
 .sk-https-warn{font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--border-radius-md);padding:8px 11px;margin-top:8px;line-height:1.5}
+.sk-course-note{font-size:11px;line-height:1.5;margin-top:10px;padding:7px 10px;border-radius:var(--border-radius-md);background:#fffbeb;border:1px solid #fde68a;color:#b45309}
+.sk-course-note.ok{background:var(--t50);border-color:var(--t400);color:var(--t700,var(--t600))}
+@media(prefers-color-scheme:dark){
+  .sk-course-note{background:#2a2113;border-color:#5a4415;color:#fbbf24}
+  .sk-course-note.ok{background:#15251f;border-color:var(--t600);color:var(--t100)}
+}
+html[data-theme=dark] .sk-course-note{background:#2a2113;border-color:#5a4415;color:#fbbf24}
+html[data-theme=dark] .sk-course-note.ok{background:#15251f;border-color:var(--t600);color:var(--t100)}
+html[data-theme=light] .sk-course-note{background:#fffbeb;border-color:#fde68a;color:#b45309}
+html[data-theme=light] .sk-course-note.ok{background:var(--t50);border-color:var(--t400);color:var(--t700,var(--t600))}
 .sk-live-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
 .sk-live-cell{text-align:center}
 .sk-live-val{font-size:18px;font-weight:600;color:var(--color-text-primary);line-height:1.2}
@@ -450,7 +460,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.13.0</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.14.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -950,7 +960,9 @@ var SK_SUB={context:'vessels.self',subscribe:[
   {path:'navigation.headingMagnetic',period:1000},
   {path:'navigation.magneticVariation',period:5000},
   {path:'environment.depth.belowKeel',period:2000},
-  {path:'navigation.attitude',period:500}
+  {path:'navigation.attitude',period:500},
+  /* Tells us whether the server's own course engine is running — see skCourseCalcLive */
+  {path:'navigation.course.calcValues.crossTrackError',period:2000}
 ]};
 
 /* Compass heading (deg true): prefer headingTrue, else magnetic + variation */
@@ -1066,6 +1078,7 @@ function disconnectSK(){
   skState._speedTrue=null;skState._dirTrue=null;skState._speedApp=null;skState._angleApp=null;
   skState._hdgTrue=null;skState._hdgMag=null;skState._magVar=null;
   curBuf=[];
+  skCourse.dest='';skCourse.mode='';skCourse.err='';
   skState._ts={};
   skState.lat=null;skState.lon=null;
   skState.weatherFiredOnce=false;
@@ -1083,10 +1096,16 @@ function parseSKDelta(raw){
   if(!msg.updates) return;
   var _now=Date.now(), ts=skState._ts;
   msg.updates.forEach(function(upd){
+    var srcLbl=(upd.source&&upd.source.label)||upd.$source||'';
     (upd.values||[]).forEach(function(v){
       var p=v.path, val=v.value;
       if(val==null) return;
       switch(p){
+        /* Our own echoed deltas must not count as "the server is computing
+           this" — that's the whole test skCourseCalcLive() performs. */
+        case 'navigation.course.calcValues.crossTrackError':
+          if(srcLbl.indexOf('RaceFlyerSK')<0) ts.xte=_now;
+          break;
         case 'environment.wind.speedTrue':     skState._speedTrue=val;ts.speedTrue=_now; break; /* m/s */
         case 'environment.wind.directionTrue': skState._dirTrue=((val*RAD2DEG)%360+360)%360;ts.dirTrue=_now; break;
         case 'environment.wind.speedApparent': skState._speedApp=val;ts.speedApp=_now; break; /* m/s */
@@ -1297,6 +1316,8 @@ function updateSKStatusCard(){
     html+='<div class="sk-live-cell"><div class="sk-live-val">'+fmt(skState.heelDeg,'°',1)+'</div><div class="sk-live-lbl">Heel</div></div>';
     html+='<div class="sk-live-cell"><div class="sk-live-val">'+fmt(skState.depthFt,'ft',1)+'</div><div class="sk-live-lbl">Depth</div></div>';
     html+='</div>';
+    var courseNote=skCourseStatusText();
+    if(courseNote) html+='<div class="sk-course-note'+(skCourse.mode==='api'&&skCourseCalcLive()?' ok':'')+'">'+courseNote+'</div>';
   }
   el.innerHTML=html;
 }
@@ -3341,7 +3362,7 @@ function raceAdvanceLeg(delta){
   raceState.legIdx=Math.max(1,Math.min(v.marks.length-1,raceState.legIdx+delta));
   renderRaceTab();
   if(raceState.courseId) selectCourse(raceState.courseId,true);
-  sendNextMarkToSK();
+  syncCourseToSK();
   refreshEinkUI();
 }
 
@@ -3806,30 +3827,145 @@ function skSendDelta(values){
   }catch(e){ console.warn('SignalK delta send failed:',e); return false; }
 }
 
-function sendNextMarkToSK(){
-  if(!skState.connected||!raceState.courseId) return;
-  var posLat=getEffectiveLat(),posLon=getEffectiveLon();
-  if(posLat==null||posLon==null) return;
+/* ── Next mark → Signal K → NMEA 0183 (Raymarine) ──
+   The chain that reaches the old Raymarine displays is: a destination held by
+   the server's Course API → @signalk/course-provider computes
+   navigation.course.calcValues.* → signalk-to-nmea0183 emits RMB/APB/BWC/XTE.
+   Every one of those sentence builders reads the *v2* course tree only, and
+   the Course API adopts an external destination only from a source typed
+   NMEA0183/NMEA2000 — never from an app. So the destination goes over REST
+   and the server does the maths.
+
+   When that isn't possible — security refuses the PUT, the server predates
+   v2, or course-provider isn't enabled — we fill the v2 tree ourselves over
+   the socket instead. The sentence builders read the data model and don't
+   care which source wrote it. That path also carries the mark letter, so the
+   display reads "K" rather than the server's generic "DP". */
+var ARRIVAL_CIRCLE_M=Math.round(AUTO_ARRIVE_NM*1852);  /* arrival alarm in step with auto leg advance */
+var skCourse={dest:'',mode:'',err:'',putAt:0,pending:false};
+
+function skRestBase(){
+  return (skState.scheme==='wss'?'https':'http')+'://'+skState.host+':'+skState.port;
+}
+
+/* Signed cross-track error in metres; positive = vessel right of the
+   prev→next track, per the SK schema ("negative … to the left of this line").
+   Flat-earth east/north frame, as lineInfo() uses for the start line. */
+function xteMeters(p,a,b){
+  var cosLat=Math.cos(p[0]*Math.PI/180);
+  var vx=(p[1]-a[1])*cosLat*60, vy=(p[0]-a[0])*60;   /* vessel offset from origin, nm */
+  var tx=(b[1]-a[1])*cosLat*60, ty=(b[0]-a[0])*60;   /* track vector, nm */
+  var L=Math.sqrt(tx*tx+ty*ty);
+  if(L<1e-9) return 0;
+  return (vx*(ty/L)-vy*(tx/L))*1852;
+}
+
+/* The active leg as positions + names, or null when there's no course or fix. */
+function courseLegPoints(){
   var v=getRaceVariant();
-  if(!v) return;
+  if(!v) return null;
+  var lat=getEffectiveLat(), lon=getEffectiveLon();
+  if(lat==null||lon==null) return null;
   var idx=Math.min(raceState.legIdx,v.marks.length-1);
-  var markId=v.marks[idx];
-  var markPos=getActiveMarks()[markId];
-  if(!markPos) return;
-  var markName=getActiveMarkNames()[markId]||markId;
-  var posArr=[posLat,posLon];
-  var brgRad=bearingDeg(posArr,markPos)*Math.PI/180;
-  var dist=distNm(posArr,markPos);
+  var marks=getActiveMarks(), names=getActiveMarkNames();
+  var next=marks[v.marks[idx]];
+  if(!next) return null;
+  var prev=idx>0?marks[v.marks[idx-1]]:null;
+  return {pos:[lat,lon],next:next,prev:prev||null,
+    nextName:names[v.marks[idx]]||v.marks[idx],
+    prevName:prev?(names[v.marks[idx-1]]||v.marks[idx-1]):''};
+}
+
+function courseDestKey(){
+  var v=getRaceVariant();
+  if(!v) return '';
+  return npsaClub+'|'+raceState.courseId+'|'+npsaClass+'|'+Math.min(raceState.legIdx,v.marks.length-1);
+}
+
+/* Is the server's own course engine feeding calcValues? Deltas we published
+   ourselves are excluded in parseSKDelta, so this can't self-confirm. */
+function skCourseCalcLive(){
+  return skState._ts.xte!=null&&Date.now()-skState._ts.xte<15000;
+}
+
+function putSKDestination(leg){
+  skCourse.pending=true;
+  fetch(skRestBase()+'/signalk/v2/api/vessels/self/navigation/course/destination',{
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({position:{latitude:leg.next[0],longitude:leg.next[1]},arrivalCircle:ARRIVAL_CIRCLE_M})
+  }).then(function(r){
+    skCourse.pending=false;
+    if(r.ok){skCourse.mode='api';skCourse.err='';skCourse.putAt=Date.now();}
+    else{skCourse.mode='delta';skCourse.err='HTTP '+r.status;}
+    updateSKStatusCard();
+  }).catch(function(){
+    skCourse.pending=false;skCourse.mode='delta';skCourse.err='no REST';
+    updateSKStatusCard();
+  });
+}
+
+function clearSKDestination(){
+  if(skCourse.mode==='api'){
+    try{fetch(skRestBase()+'/signalk/v2/api/vessels/self/navigation/course',{method:'DELETE'}).catch(function(){});}catch(e){}
+  } else if(skCourse.mode==='delta'){
+    skSendDelta([{path:'navigation.course.nextPoint',value:null},
+                 {path:'navigation.course.previousPoint',value:null}]);
+  }
+}
+
+/* Everything signalk-to-nmea0183 needs for RMB / APB / BWC / XTE. */
+function publishCourseV2(leg){
+  var brg=bearingDeg(leg.pos,leg.next), dNm=distNm(leg.pos,leg.next);
   var values=[
-    {path:'navigation.courseGreatCircle.nextPoint.position',value:{latitude:markPos[0],longitude:markPos[1]}},
-    {path:'navigation.courseGreatCircle.nextPoint.bearingTrue',value:brgRad},
-    {path:'navigation.courseGreatCircle.nextPoint.distance',value:dist*1852},
-    {path:'navigation.courseGreatCircle.nextPoint.name',value:markName}
+    {path:'navigation.course.nextPoint',value:{type:'Location',
+      position:{latitude:leg.next[0],longitude:leg.next[1]},name:leg.nextName}},
+    {path:'navigation.course.arrivalCircle',value:ARRIVAL_CIRCLE_M},
+    {path:'navigation.course.calcValues.calcMethod',value:'GreatCircle'},
+    {path:'navigation.course.calcValues.bearingTrue',value:brg*Math.PI/180},
+    {path:'navigation.course.calcValues.distance',value:dNm*1852}
   ];
-  if(skState.sogKts!=null&&skState.sogKts>0.2){
-    values.push({path:'navigation.courseGreatCircle.nextPoint.timeToGo',value:Math.round((dist/skState.sogKts)*3600)});
+  if(leg.prev){
+    values.push({path:'navigation.course.previousPoint',value:{type:'Location',
+      position:{latitude:leg.prev[0],longitude:leg.prev[1]},name:leg.prevName}});
+    values.push({path:'navigation.course.calcValues.bearingTrackTrue',value:bearingDeg(leg.prev,leg.next)*Math.PI/180});
+    values.push({path:'navigation.course.calcValues.crossTrackError',value:xteMeters(leg.pos,leg.prev,leg.next)});
+  }
+  if(skState.cogDeg!=null&&skState.sogKts!=null){
+    var vmg=skState.sogKts*Math.cos((brg-skState.cogDeg)*Math.PI/180);
+    values.push({path:'navigation.course.calcValues.velocityMadeGood',value:vmg/MS2KTS});
+    if(vmg>0.2) values.push({path:'navigation.course.calcValues.timeToGo',value:Math.round(dNm/vmg*3600)});
   }
   skSendDelta(values);
+}
+
+function syncCourseToSK(){
+  if(!skState.connected){skCourse.dest='';skCourse.mode='';skCourse.err='';return;}
+  var leg=courseLegPoints();
+  if(!leg){
+    if(skCourse.dest){clearSKDestination();skCourse.dest='';skCourse.mode='';skCourse.err='';}
+    return;
+  }
+  var key=courseDestKey();
+  if(key!==skCourse.dest&&!skCourse.pending){
+    skCourse.dest=key;
+    putSKDestination(leg);
+  }
+  if(skCourse.pending) return;
+  /* The server is computing the leg — leave it alone. */
+  if(skCourse.mode==='api'&&skCourseCalcLive()) return;
+  /* It accepted the destination moments ago; give course-provider a chance
+     before we start writing the same paths from a second source. */
+  if(skCourse.mode==='api'&&Date.now()-skCourse.putAt<8000) return;
+  publishCourseV2(leg);
+}
+
+function skCourseStatusText(){
+  if(!skState.connected||!skCourse.dest) return '';
+  if(skCourse.mode==='api'&&skCourseCalcLive()) return 'Next mark set via Course API &middot; cross-track live to NMEA 0183';
+  if(skCourse.mode==='api') return 'Next mark set via Course API, but no course calculations are coming back — enable the <strong>Course Provider</strong> plugin on the server.';
+  if(skCourse.mode==='delta') return 'Course API unavailable ('+skCourse.err+') — publishing course data directly instead.';
+  return '';
 }
 
 /* Our set & drift estimate on the standard SK path (rad / m/s) — published
@@ -3841,7 +3977,8 @@ function sendCurrentToSK(){
     value:{setTrue:cur.setDeg*Math.PI/180,drift:cur.driftKts/MS2KTS}}]);
 }
 
-setInterval(function(){sendNextMarkToSK();sendCurrentToSK();},5000);
+setInterval(syncCourseToSK,2000);
+setInterval(sendCurrentToSK,5000);
 </script>
 </body>
 </html>

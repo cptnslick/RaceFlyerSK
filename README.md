@@ -133,6 +133,32 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
 | `navigation.headingTrue` | 1 s | Set & drift |
 | `navigation.headingMagnetic` | 1 s | Heading fallback (+ variation) |
 | `navigation.magneticVariation` | 5 s | Magnetic→true correction |
+| `navigation.course.calcValues.crossTrackError` | 2 s | Detects whether the server's course engine is running |
+
+### Sent back to Signal K
+
+- **Next mark** is set as the boat's destination through the **v2 Course API**
+  (`PUT /signalk/v2/api/vessels/self/navigation/course/destination`), with the
+  arrival circle matched to the app's auto-leg-advance radius (0.1 nm). The
+  destination is re-set on every leg change and cleared when the course is
+  deselected.
+- **Current set & drift** on `environment.current` (`setTrue` rad, `drift` m/s).
+
+### Reaching old Raymarine instruments (NMEA 0183)
+
+The chain is: destination in the Course API → the **Course Provider** plugin
+(`@signalk/course-provider`) computes `navigation.course.calcValues.*` →
+**`signalk-to-nmea0183`** emits `RMB`, `APB`, `BWC` and `XTE` → NMEA 0183 out →
+the Raymarine display. Both plugins have to be enabled on the server; the
+sentence builders read the v2 course tree only, so the older
+`navigation.courseGreatCircle.*` paths reach nothing.
+
+If the Course API can't be used (Signal K security refuses the write, or the
+server predates v2) or the Course Provider plugin isn't running, the app fills
+`navigation.course.*` in itself over the WebSocket — including a signed
+cross-track error — so the sentences still go out. That fallback also carries
+the mark letter, so the display shows **K** instead of Signal K's generic
+`DP`. Which mode is in use is reported on the Signal K card on the Dashboard.
 
 ## Boat
 
