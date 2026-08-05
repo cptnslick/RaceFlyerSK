@@ -460,7 +460,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.2</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.3</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -2260,23 +2260,15 @@ function getActiveCourses()  { return npsaClub==='rcra'?RCRA_COURSES:npsaClub===
 function getMarkFallback()   { return npsaClub==='rcra'?[39.190,-76.490]:[39.20083,-76.45898]; }
 
 function setNpsaClub(club){
-  /* Save current course under the OLD club key before switching */
-  if(raceState.courseId) lsSet('course_'+npsaClub,raceState.courseId);
   npsaClub=club;
   lsSet('npsa_club',club);
   var clubSel=document.getElementById('npsa-club-sel');
   if(clubSel) clubSel.value=club;
-  /* Restore the previously-selected course for THIS club, if it still exists */
-  var savedCourse=lsGet('course_'+club);
-  var courses=getActiveCourses();
-  raceState.courseId=(savedCourse&&courses[savedCourse])?savedCourse:'';
-  raceState.legIdx=1;
   populateCourseDropdown();
-  if(npsaLayerGroup) npsaLayerGroup.clearLayers();
-  document.getElementById('npsa-next-mark').innerHTML='';
+  /* Course letters mean different things in different sets, so carrying a
+     selection across is worse than useless — start the new set clean. */
+  clearCourseSelection();
   if(npsaMap) npsaMap.setView(club==='rcra'?[39.190,-76.490]:[39.193,-76.458],12);
-  if(raceState.courseId) selectCourse(raceState.courseId);
-  renderRaceTab();
 }
 
 function populateCourseDropdown(){
@@ -2462,11 +2454,31 @@ function distNm(a,b){
 }
 
 
+/* Back to "Select course…" — drop the course everywhere it shows: map layers,
+   both next-mark cards, and the stored course for this set (so a reload comes
+   up blank too). The pinged start line is deliberately left alone; it belongs
+   to the day, not the course. Signal K clears itself on the next
+   syncCourseToSK tick, since courseLegPoints() goes null with no course. */
+function clearCourseSelection(){
+  raceState.courseId='';raceState.legIdx=1;
+  lsDel('course_'+npsaClub);
+  if(npsaLayerGroup) npsaLayerGroup.clearLayers();
+  npsaLegs=[]; /* renderLegLabels redraws from this on zoomend — a map still
+                  settling from the last fit would otherwise repaint the labels */
+  if(npsaLabelGroup) npsaLabelGroup.clearLayers();
+  if(npsaLaylineGroup) npsaLaylineGroup.clearLayers();
+  _laylineSig=''; /* else re-picking the same course skips the layline redraw */
+  var sel=document.getElementById('npsa-course-sel');
+  if(sel) sel.value='';
+  renderNpsaNextMark();
+  renderRaceTab();
+}
+
 function selectCourse(id,noFit){
   var activeCourses=getActiveCourses();
   var aMarks=getActiveMarks(), aNames=getActiveMarkNames();
   if(!id||!activeCourses[id]) {
-    document.getElementById('npsa-next-mark').innerHTML='';
+    clearCourseSelection();
     return;
   }
   if(id!==raceState.courseId){raceState.courseId=id;raceState.legIdx=1;lsSet('course_'+npsaClub,id);}
