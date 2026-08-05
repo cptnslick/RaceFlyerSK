@@ -27,6 +27,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEBROOT, **kwargs)
 
+    def end_headers(self):
+        # With no Cache-Control at all, browsers cache heuristically (roughly
+        # 10% of the file's age) — so a freshly pulled index.html could keep
+        # serving stale for minutes after "Check for update" reloaded the page.
+        # 'no-cache' still stores the file and still revalidates against
+        # Last-Modified, so unchanged files come back as a cheap 304 and the
+        # offline app shell is unaffected.
+        self.send_header('Cache-Control', 'no-cache')
+        super().end_headers()
+
     def do_POST(self):
         if self.path != '/update':
             self.send_response(404)
