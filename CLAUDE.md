@@ -76,6 +76,9 @@ Regenerate from a full Tabler build (`pip install fonttools brotli`):
   updates only what changed.
 - Theme-aware: style both light and dark. Inline colors must use the CSS tokens,
   not hard-coded black/white, or dark mode breaks.
+  Rounding/warning colours are tokens too: `--port`/`--stbd`/`--warn` (same in
+  both themes; JS reads them as `CLR.*` for Leaflet and SVG attributes, which
+  can't use `var()`), and `-bg`/`-bd`/`-fg`/`-ink` tints that adapt.
 
 ## Testing a change (headless, cheap)
 
@@ -86,7 +89,7 @@ minute; exits non-zero on failure). One file: `node tests/course-api.test.js`.
   loads `index.html` over `file://` in headless Chromium, `check(label, ok,
   detail)` records a pass/fail, and any page error fails the suite.
   `stubSignalK` fakes the socket and REST so course sync runs with no server.
-- `*.test.js` — course API, course selection, live rendering, wake lock,
+- `*.test.js` — course API, course selection, live rendering, theme colours, wake lock,
   wind/current/laylines.
 - `test_serve.py` — `serve.py`'s real handler over plain HTTP (no cert needed).
 
