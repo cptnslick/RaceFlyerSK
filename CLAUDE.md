@@ -70,6 +70,10 @@ Regenerate from a full Tabler build (`pip install fonttools brotli`):
 - Vanilla ES5-ish JS, string-concatenated HTML, inline styles that read from the
   CSS custom properties (`--color-text-primary`, `--t600`, etc.). Match the
   surrounding style; keep it framework-free.
+- Views that re-render on live data (Race tab, next-mark cards, Signal K card)
+  go through `patchHTML(el, html)`, not `el.innerHTML=` — a full rebuild swaps
+  out buttons mid-tap and drops the tap. Build the same HTML string; the patcher
+  updates only what changed.
 - Theme-aware: style both light and dark. Inline colors must use the CSS tokens,
   not hard-coded black/white, or dark mode breaks.
 
@@ -82,7 +86,8 @@ minute; exits non-zero on failure). One file: `node tests/course-api.test.js`.
   loads `index.html` over `file://` in headless Chromium, `check(label, ok,
   detail)` records a pass/fail, and any page error fails the suite.
   `stubSignalK` fakes the socket and REST so course sync runs with no server.
-- `*.test.js` — course API, course selection, wake lock, wind/current/laylines.
+- `*.test.js` — course API, course selection, live rendering, wake lock,
+  wind/current/laylines.
 - `test_serve.py` — `serve.py`'s real handler over plain HTTP (no cert needed).
 
 Add a check whenever you fix a bug, and put tests here, not in a scratchpad
