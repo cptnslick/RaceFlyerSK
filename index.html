@@ -460,7 +460,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.3</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.4</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -883,6 +883,11 @@ function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
 function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
 function lsDel(k){try{localStorage.removeItem(k);}catch(e){}}
 
+/* Escape text we didn't write (place names, NOAA stations, Signal K error
+   messages, a typed-in host) before it goes into innerHTML or an attribute */
+var ESC_MAP={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return ESC_MAP[c];});}
+
 /* ── Signal K live sensor state ──────────────────── */
 var skState={
   ws:null, connected:false, connecting:false, reconnectTimer:null,
@@ -1124,7 +1129,7 @@ function disconnectSK(){
   skState._speedTrue=null;skState._dirTrue=null;skState._speedApp=null;skState._angleApp=null;
   skState._hdgTrue=null;skState._hdgMag=null;skState._magVar=null;
   curBuf=[];
-  skCourse.dest='';skCourse.mode='';skCourse.err='';skCourse.pending=false;skCourse.putAt=0;skCourse.retryAt=0;
+  resetSkCourse();
   skState._ts={};
   skState.lat=null;skState.lon=null;
   skState.weatherFiredOnce=false;
@@ -1348,7 +1353,7 @@ function updateSKStatusCard(){
     var onHttps=window.location.protocol==='https:';
     html+='<div class="sk-conn-row">';
     html+='<button class="sk-scheme-btn'+(isWss?' wss':'')+'" id="sk-scheme-btn" onclick="toggleSKScheme()" title="Toggle ws/wss">'+(isWss?'WSS':'WS')+'</button>';
-    html+='<input class="sk-host-input" id="sk-host-input" type="text" inputmode="url" placeholder="192.168.x.x:3000" value="'+connVal+'">';
+    html+='<input class="sk-host-input" id="sk-host-input" type="text" inputmode="url" placeholder="192.168.x.x:3000" value="'+esc(connVal)+'">';
     html+='<button class="sk-conn-btn connect" onclick="skConnectFromInput()">Connect</button>';
     html+='</div>';
     if(onHttps&&!isWss){
@@ -1671,7 +1676,7 @@ function renderWx(loc,wx,marine,tides){
 
   /* Location header */
   html+='<div class="wx-loc">';
-  html+='<div><div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">'+(loc||'Current location')+'</div>';
+  html+='<div><div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">'+esc(loc||'Current location')+'</div>';
   html+='<div class="wx-loc-detail">Updated '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+
     (wxState.ipLocation?' · Approximate location (IP-based)':' · '+wxState.lat.toFixed(3)+', '+wxState.lon.toFixed(3))+
     '</div></div>';
@@ -1784,7 +1789,7 @@ function renderWx(loc,wx,marine,tides){
 
   /* Tides — visual curve */
   if(tides&&tides.predictions&&tides.predictions.length){
-    html+='<p class="sec-lbl">Tides · '+tides.station+'</p>';
+    html+='<p class="sec-lbl">Tides · '+esc(tides.station)+'</p>';
     html+='<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px 10px;margin-bottom:14px;overflow:hidden">';
     html+=renderTideSVG(tides);
     /* Next-tide summary strip */
@@ -3905,7 +3910,17 @@ function skSendDelta(values){
    display reads "K" rather than the server's generic "DP". */
 var ARRIVAL_CIRCLE_M=Math.round(AUTO_ARRIVE_NM*1852);  /* arrival alarm in step with auto leg advance */
 var SK_PUT_RETRY_MS=60000;
-var skCourse={dest:'',mode:'',err:'',putAt:0,retryAt:0,pending:false};
+var skCourse={};
+/* The one place skCourse's fields are listed. Every reset goes through here, so
+   a new field can't be missed in one copy — which is how a stale pending once
+   survived a disconnect and froze course sync. Mutates in place so existing
+   references stay valid. An in-flight PUT is safe to forget: its handler checks
+   the destination it was sent for before acting on the reply. */
+function resetSkCourse(){
+  skCourse.dest='';skCourse.mode='';skCourse.err='';
+  skCourse.putAt=0;skCourse.retryAt=0;skCourse.pending=false;
+}
+resetSkCourse();
 
 function skRestBase(){
   return (skState.scheme==='wss'?'https':'http')+'://'+skState.host+':'+skState.port;
@@ -4040,10 +4055,10 @@ function publishCourseV2(leg){
 }
 
 function syncCourseToSK(){
-  if(!skState.connected){skCourse.dest='';skCourse.mode='';skCourse.err='';skCourse.pending=false;return;}
+  if(!skState.connected){resetSkCourse();return;}
   var leg=courseLegPoints();
   if(!leg){
-    if(skCourse.dest){clearSKDestination();skCourse.dest='';skCourse.mode='';skCourse.err='';}
+    if(skCourse.dest){clearSKDestination();resetSkCourse();}
     return;
   }
   var key=courseDestKey();
@@ -4080,7 +4095,7 @@ function skCourseStatusText(){
   if(skCourse.mode==='api'&&skCourseCalcLive()) return 'Next mark set via Course API &middot; cross-track live to NMEA 0183';
   if(skCourse.mode==='api') return 'Next mark set via Course API, but no course calculations are coming back — enable the <strong>Course Provider</strong> plugin on the server.';
   if(skCourse.mode==='nofix') return 'Signal K has no GPS fix of its own, so it won\'t accept a destination — publishing course data directly from this device\'s GPS.';
-  if(skCourse.mode==='delta') return 'Course API unavailable ('+skCourse.err+') — publishing course data directly instead.';
+  if(skCourse.mode==='delta') return 'Course API unavailable ('+esc(skCourse.err)+') — publishing course data directly instead.';
   return '';
 }
 
