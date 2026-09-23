@@ -54,12 +54,14 @@ Regenerate from a full Tabler build (`pip install fonttools brotli`):
 | Race-tab cell styles | `/* ── Race tab compact wind grid` |
 | Polar data + interpolation | `const POLAR`, `function interpPolar` |
 | Trim tab | `function updateUpwind`, `REACH_BANDS`, `RUN_BANDS` |
-| Weather / tides | `/* ── Weather`, `function loadWeather`, `renderTideSVG` |
+| Weather / tides | `/* ── Weather`, `function loadWeather`, `renderWx` → `wxWindHTML`, `wxTidesHTML`…, `renderTideSVG` |
 | Signal K live sensors | `var skState`, `function connectSK`, `parseSKDelta` |
 | Phone-GPS fallback | `/* ── Phone/tablet GPS fallback` |
 | Course data | `var MARKS`, `var COURSES`, `NPSA_S3_COURSES`, `RCRA_COURSES` |
 | Course map render | `function selectCourse` |
-| Race tab | `function renderRaceTab`, `nextMarkCardHTML` |
+| Race tab | `function renderRaceTab` → `raceWindState`, `raceHeadingsHTML`, `racePerfHTML`, `raceWindHTML`; `nextMarkCardHTML` |
+| Periodic jobs (1 s tick) | `/* ── Periodic jobs`, `every(sec, name, fn)` |
+| Flat-earth geometry | `function enNm` (with `bearingDeg`, `distNm`, `destPoint`) |
 | Start timer | `var SEQUENCES`, `var timerState`, `renderRaceTimerPanel` |
 | Eink kiosk view | `EINK_MODE`, `refreshEinkUI` |
 
@@ -70,6 +72,8 @@ Regenerate from a full Tabler build (`pip install fonttools brotli`):
 - Vanilla ES5-ish JS, string-concatenated HTML, inline styles that read from the
   CSS custom properties (`--color-text-primary`, `--t600`, etc.). Match the
   surrounding style; keep it framework-free.
+- Anything that polls on a fixed period registers with `every(sec, name, fn)`
+  rather than its own `setInterval`.
 - Views that re-render on live data (Race tab, next-mark cards, Signal K card)
   go through `patchHTML(el, html)`, not `el.innerHTML=` — a full rebuild swaps
   out buttons mid-tap and drops the tap. Build the same HTML string; the patcher
@@ -89,7 +93,7 @@ minute; exits non-zero on failure). One file: `node tests/course-api.test.js`.
   loads `index.html` over `file://` in headless Chromium, `check(label, ok,
   detail)` records a pass/fail, and any page error fails the suite.
   `stubSignalK` fakes the socket and REST so course sync runs with no server.
-- `*.test.js` — course API, course selection, live rendering, theme colours, wake lock,
+- `*.test.js` — course API, course selection, periodic jobs, live rendering, theme colours, wake lock,
   wind/current/laylines.
 - `test_serve.py` — `serve.py`'s real handler over plain HTTP (no cert needed).
 
