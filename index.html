@@ -460,7 +460,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.4</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.5</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -887,6 +887,37 @@ function lsDel(k){try{localStorage.removeItem(k);}catch(e){}}
    messages, a typed-in host) before it goes into innerHTML or an attribute */
 var ESC_MAP={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return ESC_MAP[c];});}
+
+/* Put html into el by patching what's already there instead of replacing it.
+   Live views re-render several times a second; rebuilding them with innerHTML
+   swaps every button for a new one, so a tap that starts on the old button and
+   ends on the new one is silently dropped (and a half-typed input is wiped).
+   This walks old and new trees in step: same kind of node → keep it and update
+   its text/attributes; different → swap just that node. Buttons, inputs and
+   focus survive, and only the numbers that moved touch the DOM. */
+function patchHTML(el,html){
+  var t=document.createElement('template');
+  t.innerHTML=html;
+  _patchChildren(el,t.content);
+}
+function _patchChildren(cur,next){
+  var a=cur.firstChild,b=next.firstChild,nb,na;
+  while(b){
+    nb=b.nextSibling;                       /* b may be moved out of next below */
+    if(!a) cur.appendChild(b);
+    else if(a.nodeType===b.nodeType&&a.nodeName===b.nodeName){_patchNode(a,b);a=a.nextSibling;}
+    else{na=a.nextSibling;cur.replaceChild(b,a);a=na;}
+    b=nb;
+  }
+  while(a){na=a.nextSibling;cur.removeChild(a);a=na;}
+}
+function _patchNode(a,b){
+  if(a.nodeType!==1){if(a.nodeValue!==b.nodeValue)a.nodeValue=b.nodeValue;return;}
+  var i,at;
+  for(i=a.attributes.length-1;i>=0;i--){at=a.attributes[i];if(!b.hasAttribute(at.name))a.removeAttribute(at.name);}
+  for(i=0;i<b.attributes.length;i++){at=b.attributes[i];if(a.getAttribute(at.name)!==at.value)a.setAttribute(at.name,at.value);}
+  _patchChildren(a,b);
+}
 
 /* ── Signal K live sensor state ──────────────────── */
 var skState={
@@ -1373,7 +1404,7 @@ function updateSKStatusCard(){
     var courseNote=skCourseStatusText();
     if(courseNote) html+='<div class="sk-course-note'+(skCourse.mode==='api'&&skCourseCalcLive()?' ok':'')+'">'+courseNote+'</div>';
   }
-  el.innerHTML=html;
+  patchHTML(el,html); /* keeps the Disconnect button and a half-typed host */
 }
 
 function toggleSKScheme(){
@@ -3684,7 +3715,11 @@ function renderRaceTab(){
   /* ── 4. Wind history ── */
   var histHtml=renderWindHistory();
 
-  el.innerHTML=optHtml+perfHtml+nextHtml+windHtml+histHtml;
+  /* One fixed wrapper per section, so a section appearing or vanishing (the
+     perf strip, the current line) can't shift the others out of step while
+     patching — the next-mark buttons always line up with themselves. */
+  patchHTML(el,'<div>'+optHtml+'</div><div>'+perfHtml+'</div><div>'+nextHtml+'</div>'
+    +'<div>'+windHtml+'</div><div>'+histHtml+'</div>');
 }
 
 /* ── Current arrow on the chart — patched in place like the wind label ── */
@@ -3748,7 +3783,7 @@ function renderNpsaNextMark(){
   if(!el) return;
   /* Same compact card as the Race tab (course/leg/GPS, mark trail, bearing,
      distance/ETA/VMG). Empty when no course is selected. */
-  el.innerHTML=nextMarkCardHTML();
+  patchHTML(el,nextMarkCardHTML());
 }
 
 /* Start phone GPS watcher immediately so position is ready when needed */
