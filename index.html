@@ -473,7 +473,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.7</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.8</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -904,6 +904,23 @@ var ESC_MAP={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 function cssTok(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
 var CLR={port:cssTok('--port'),stbd:cssTok('--stbd'),warn:cssTok('--warn')};
 
+/* ── Periodic jobs ─────────────────────────────────
+   Everything that polls on a fixed period runs off this one 1 s tick, so the
+   whole list is in one place (grep "every("). Jobs are isolated: one that
+   throws is logged and the rest still run. Timers that start and stop with
+   the user, or need sub-second timing — slider hold-to-repeat, the countdown,
+   the auto-start monitor — keep their own intervals. */
+var _jobs=[],_jobTick=0;
+function every(sec,name,fn){_jobs.push({sec:sec,name:name,fn:fn});}
+function runJobs(n){
+  for(var i=0;i<_jobs.length;i++){
+    var j=_jobs[i];
+    if(n%j.sec!==0) continue;
+    try{j.fn();}catch(e){console.error('job '+j.name+' failed:',e);}
+  }
+}
+setInterval(function(){runJobs(++_jobTick);},1000);
+
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return ESC_MAP[c];});}
 
 /* Put html into el by patching what's already there instead of replacing it.
@@ -1288,14 +1305,14 @@ function recomputeSKWind(){
 
 /* Expiry also has to fire when the socket goes completely silent —
    no deltas means parseSKDelta never runs its sweep. */
-setInterval(function(){
+every(5,'sk-stale',function(){
   if(!skState.connected) return;
   if(skState.lastUpdate!=null&&Date.now()-skState.lastUpdate<5000) return;
   sweepStaleSK();
   recomputeSKWind();
   applyWindToWx();
   refreshSKUI();
-},5000);
+});
 
 /* ── Current set & drift ──────────────────────────────────────
    current = ground velocity (SOG@COG) − water velocity (STW@heading).
@@ -1720,153 +1737,154 @@ function renderWx(loc,wx,marine,tides){
   }
   if(tides&&tides.predictions) wxState.tideData=tides;
   updateDashConditions();
-  var now=new Date();
-  var html='';
+  /* Header, then two columns: wind (main) | conditions, swell, tides (side) */
+  var html=wxHeaderHTML(loc)
+    +'<div class="wx-grid"><div class="wx-grid-main">'
+    +(wx?wxWindHTML(wx):'<div class="wx-err"><i class="ti ti-wind"></i>Wind data unavailable</div>')
+    +'</div><div class="wx-grid-side">'
+    +(wx?wxConditionsHTML(wx):'')
+    +(marine&&marine.wave_height!=null?wxMarineHTML(marine):'')
+    +(tides&&tides.predictions&&tides.predictions.length?wxTidesHTML(tides)
+      :'<div class="wx-err"><i class="ti ti-anchor"></i>Tide predictions require a NOAA station nearby (US coastal waters)</div>')
+    +'</div></div>';
+  document.getElementById('wx-content').innerHTML=html;
+}
 
-  /* Location header */
-  html+='<div class="wx-loc">';
+/* Place name, update time and fix, and the Refresh button */
+function wxHeaderHTML(loc){
+  var now=new Date();
+  var html='<div class="wx-loc">';
   html+='<div><div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">'+esc(loc||'Current location')+'</div>';
   html+='<div class="wx-loc-detail">Updated '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+
     (wxState.ipLocation?' · Approximate location (IP-based)':' · '+wxState.lat.toFixed(3)+', '+wxState.lon.toFixed(3))+
     '</div></div>';
   html+='<button class="wx-refresh" onclick="loadWeather()"><i class="ti ti-refresh" style="font-size:14px"></i> Refresh</button>';
   html+='</div>';
+  return html;
+}
 
-  /* Two-column grid wrapper */
-  html+='<div class="wx-grid"><div class="wx-grid-main">';
+/* Wind card: speed, direction, gust, Beaufort badge, then the 3-hour strip */
+function wxWindHTML(wx){
+  var spd=Math.round(wx.wind_speed_10m);
+  var gust=wx.wind_gusts_10m!=null?Math.round(wx.wind_gusts_10m):null; /* not always in the feed */
+  var dir=wx.wind_direction_10m;
+  var cmp=compass(dir);
+  var bf=bft(spd);
+  var html='<div class="wx-wind">';
+  html+='<div class="sec-lbl" style="color:var(--t600);margin-bottom:10px">Wind'+(skState.connected?'<span class="sk-live-badge"><span class="sk-dot live" style="width:6px;height:6px"></span>Live</span>':'')+'</div>';
+  html+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">';
+  html+='<div>';
+  html+='<div><span class="wx-wind-speed">'+spd+'</span><span class="wx-wind-unit">kts</span></div>';
+  html+='<div class="wx-wind-dir"><i class="ti ti-navigation" style="transform:rotate('+dir+'deg);display:inline-block;font-size:15px" aria-hidden="true"></i>'+cmp+' ('+Math.round(dir)+'°)</div>';
+  html+='<div class="wx-wind-gust">Gusts to '+(gust!=null?gust+' kts':'--')+'</div>';
+  html+='</div>';
+  html+='<div class="cond-badge '+bf[2]+' wx-bft-badge">';
+  html+='<div class="wx-bft-num">F'+bf[0]+'</div>';
+  html+='<div class="wx-bft-lbl">'+bf[1]+'</div>';
+  html+='</div>';
+  html+='</div>';
+  if(wx.minutely_15&&wx.minutely_15.time) html+=wxForecastHTML(wx.minutely_15);
+  html+='</div>';
+  return html;
+}
 
-  /* Wind card */
-  if(wx){
-    var spd=Math.round(wx.wind_speed_10m);
-    var gust=wx.wind_gusts_10m!=null?Math.round(wx.wind_gusts_10m):null; /* not always in the feed */
-    var dir=wx.wind_direction_10m;
-    var cmp=compass(dir);
-    var bf=bft(spd);
-    html+='<div class="wx-wind">';
-    html+='<div class="sec-lbl" style="color:var(--t600);margin-bottom:10px">Wind'+(skState.connected?'<span class="sk-live-badge"><span class="sk-dot live" style="width:6px;height:6px"></span>Live</span>':'')+'</div>';
-    html+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">';
-    html+='<div>';
-    html+='<div><span class="wx-wind-speed">'+spd+'</span><span class="wx-wind-unit">kts</span></div>';
-    html+='<div class="wx-wind-dir"><i class="ti ti-navigation" style="transform:rotate('+dir+'deg);display:inline-block;font-size:15px" aria-hidden="true"></i>'+cmp+' ('+Math.round(dir)+'°)</div>';
-    html+='<div class="wx-wind-gust">Gusts to '+(gust!=null?gust+' kts':'--')+'</div>';
-    html+='</div>';
-    html+='<div class="cond-badge '+bf[2]+' wx-bft-badge">';
-    html+='<div class="wx-bft-num">F'+bf[0]+'</div>';
-    html+='<div class="wx-bft-lbl">'+bf[1]+'</div>';
-    html+='</div>';
-    html+='</div>';
-    /* 3-hour wind forecast strip */
-    if(wx.minutely_15&&wx.minutely_15.time){
-      var m15=wx.minutely_15;
-      var nowMs=Date.now();
-      var si=0;
-      for(var fi=0;fi<m15.time.length;fi++){
-        if(new Date(m15.time[fi]).getTime()>=nowMs){si=fi;break;}
-      }
-      var slots=[];
-      for(var fj=0;fj<7;fj++){
-        var idx=si+fj*2;
-        if(idx<m15.time.length){
-          slots.push({
-            t:new Date(m15.time[idx]),
-            spd:Math.round(m15.wind_speed_10m[idx]),
-            dir:Math.round(m15.wind_direction_10m[idx]),
-            gst:Math.round(m15.wind_gusts_10m[idx])
-          });
-        }
-      }
-      if(slots.length){
-        var maxSpd=Math.max.apply(null,slots.map(function(s){return s.spd;}));
-        html+='<div style="margin-top:14px;border-top:1px solid var(--t100);padding-top:12px">';
-        html+='<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--t600);margin-bottom:10px">Next 3 hours</div>';
-        html+='<div style="display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px">';
-        slots.forEach(function(s,i){
-          var timeStr=i===0?'Now':s.t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-          var isNow=i===0;
-          var barPct=maxSpd>0?Math.round((s.spd/maxSpd)*100):50;
-          html+='<div style="flex-shrink:0;background:'+(isNow?'rgba(255,255,255,0.65)':'rgba(255,255,255,0.35)')+
-            ';border:0.5px solid '+(isNow?'var(--t200,var(--t100))':'var(--t100)')+
-            ';border-radius:9px;padding:8px 8px 7px;text-align:center;min-width:52px;'+(isNow?'box-shadow:0 1px 4px rgba(0,0,0,.08)':'')+'">';
-          html+='<div style="font-size:10px;color:var(--t600);font-weight:'+(isNow?'700':'500')+';margin-bottom:6px;white-space:nowrap">'+timeStr+'</div>';
-          html+='<i class="ti ti-navigation" style="transform:rotate('+s.dir+'deg);display:inline-block;font-size:13px;color:var(--t600)" aria-hidden="true"></i>';
-          html+='<div style="font-size:17px;font-weight:700;color:var(--t800);line-height:1.15;margin-top:4px">'+s.spd+'</div>';
-          html+='<div style="font-size:10px;color:var(--t600);margin-top:1px">'+compass(s.dir)+'</div>';
-          /* mini bar */
-          html+='<div style="margin-top:6px;height:3px;border-radius:2px;background:var(--t100)">';
-          html+='<div style="height:100%;border-radius:2px;background:var(--t400);width:'+barPct+'%"></div>';
-          html+='</div>';
-          html+='</div>';
-        });
-        html+='</div></div>';
-      }
+/* Next 3 hours of wind, one tile per 30 min from the 15-minute forecast */
+function wxForecastHTML(m15){
+  var nowMs=Date.now();
+  var si=0;
+  for(var fi=0;fi<m15.time.length;fi++){
+    if(new Date(m15.time[fi]).getTime()>=nowMs){si=fi;break;}
+  }
+  var slots=[];
+  for(var fj=0;fj<7;fj++){
+    var idx=si+fj*2;
+    if(idx<m15.time.length){
+      slots.push({
+        t:new Date(m15.time[idx]),
+        spd:Math.round(m15.wind_speed_10m[idx]),
+        dir:Math.round(m15.wind_direction_10m[idx])
+      });
     }
-    html+='</div>';
-  } else {
-    html+='<div class="wx-err"><i class="ti ti-wind"></i>Wind data unavailable</div>';
   }
-
-  /* Close left column, open right column */
-  html+='</div><div class="wx-grid-side">';
-
-  /* Conditions row */
-  if(wx){
-    var desc=WX_CODES[wx.weather_code]||('Code '+wx.weather_code);
-    var temp=Math.round(wx.temperature_2m);
-    var pres=Math.round(wx.surface_pressure);
-    var vis=wx.visibility!=null?(wx.visibility>=16000?'10+ mi':(wx.visibility/1609.34).toFixed(1)+' mi'):'--';
-    html+='<div class="wx-cond-row">';
-    html+='<div class="wx-cond"><div class="wx-cond-val">'+temp+'°F</div><div class="wx-cond-lbl">Temp</div></div>';
-    html+='<div class="wx-cond"><div class="wx-cond-val">'+pres+'</div><div class="wx-cond-lbl">hPa</div></div>';
-    html+='<div class="wx-cond"><div class="wx-cond-val" style="font-size:13px;line-height:1.3">'+desc+'</div><div class="wx-cond-lbl">Sky</div></div>';
-    html+='<div class="wx-cond"><div class="wx-cond-val" style="font-size:15px">'+vis+'</div><div class="wx-cond-lbl">Vis</div></div>';
-    html+='</div>';
-  }
-
-  /* Marine / swell */
-  if(marine&&marine.wave_height!=null){
-    var wh=(marine.wave_height*3.281).toFixed(1);
-    var wp=marine.wave_period?Math.round(marine.wave_period)+'s':'--';
-    var wd=marine.wave_direction!=null?compass(marine.wave_direction):'--';
-    html+='<div class="wx-marine">';
-    html+='<div class="sec-lbl" style="margin-bottom:10px">Swell / Sea state</div>';
-    html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">';
-    html+='<div><div style="font-size:20px;font-weight:500;color:var(--color-text-primary)">'+wh+'</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;text-transform:uppercase;letter-spacing:.4px">Height ft</div></div>';
-    html+='<div><div style="font-size:20px;font-weight:500;color:var(--color-text-primary)">'+wp+'</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;text-transform:uppercase;letter-spacing:.4px">Period</div></div>';
-    html+='<div><div style="font-size:20px;font-weight:500;color:var(--color-text-primary)">'+wd+'</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;text-transform:uppercase;letter-spacing:.4px">Direction</div></div>';
-    html+='</div></div>';
-  }
-
-  /* Tides — visual curve */
-  if(tides&&tides.predictions&&tides.predictions.length){
-    html+='<p class="sec-lbl">Tides · '+esc(tides.station)+'</p>';
-    html+='<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px 10px;margin-bottom:14px;overflow:hidden">';
-    html+=renderTideSVG(tides);
-    /* Next-tide summary strip */
-    var tdNow=Date.now();
-    var tdPreds=tides.predictions;
-    var tdNext=tdPreds.length-1;
-    for(var i=0;i<tdPreds.length;i++){if(new Date(tdPreds[i].t.replace(' ','T')).getTime()>tdNow){tdNext=i;break;}}
-    var tn=tdPreds[tdNext];
-    var tnMs=new Date(tn.t.replace(' ','T')).getTime();
-    var tnTime=new Date(tn.t.replace(' ','T')).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    var tnMins=Math.round((tnMs-tdNow)/60000);
-    var tnStr=durStr(tnMins);
-    var tnH=tn.type==='H';
-    html+='<div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)">';
-    html+='<span style="font-size:18px;line-height:1;color:'+(tnH?'var(--t600)':'var(--b400)')+';">'+(tnH?'▲':'▼')+'</span>';
-    html+='<span style="font-size:13px;font-weight:600;color:var(--color-text-primary)">'+(tnH?'High':'Low')+' tide</span>';
-    html+='<span style="font-size:13px;color:var(--color-text-secondary)">'+parseFloat(tn.v).toFixed(1)+' ft &middot; '+tnTime+' &middot; in '+tnStr+'</span>';
-    html+='<span style="margin-left:auto;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:var(--t400);color:#fff;padding:2px 8px;border-radius:99px">Next</span>';
+  if(!slots.length) return '';
+  var maxSpd=Math.max.apply(null,slots.map(function(s){return s.spd;}));
+  var html='<div style="margin-top:14px;border-top:1px solid var(--t100);padding-top:12px">';
+  html+='<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--t600);margin-bottom:10px">Next 3 hours</div>';
+  html+='<div style="display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px">';
+  slots.forEach(function(s,i){
+    var timeStr=i===0?'Now':s.t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    var isNow=i===0;
+    var barPct=maxSpd>0?Math.round((s.spd/maxSpd)*100):50;
+    html+='<div style="flex-shrink:0;background:'+(isNow?'rgba(255,255,255,0.65)':'rgba(255,255,255,0.35)')+
+      ';border:0.5px solid '+(isNow?'var(--t200,var(--t100))':'var(--t100)')+
+      ';border-radius:9px;padding:8px 8px 7px;text-align:center;min-width:52px;'+(isNow?'box-shadow:0 1px 4px rgba(0,0,0,.08)':'')+'">';
+    html+='<div style="font-size:10px;color:var(--t600);font-weight:'+(isNow?'700':'500')+';margin-bottom:6px;white-space:nowrap">'+timeStr+'</div>';
+    html+='<i class="ti ti-navigation" style="transform:rotate('+s.dir+'deg);display:inline-block;font-size:13px;color:var(--t600)" aria-hidden="true"></i>';
+    html+='<div style="font-size:17px;font-weight:700;color:var(--t800);line-height:1.15;margin-top:4px">'+s.spd+'</div>';
+    html+='<div style="font-size:10px;color:var(--t600);margin-top:1px">'+compass(s.dir)+'</div>';
+    /* mini bar */
+    html+='<div style="margin-top:6px;height:3px;border-radius:2px;background:var(--t100)">';
+    html+='<div style="height:100%;border-radius:2px;background:var(--t400);width:'+barPct+'%"></div>';
     html+='</div>';
     html+='</div>';
-  } else {
-    html+='<div class="wx-err"><i class="ti ti-anchor"></i>Tide predictions require a NOAA station nearby (US coastal waters)</div>';
-  }
-
-  /* Close right column + grid */
+  });
   html+='</div></div>';
+  return html;
+}
 
-  document.getElementById('wx-content').innerHTML=html;
+/* Temp · pressure · sky · visibility */
+function wxConditionsHTML(wx){
+  var desc=WX_CODES[wx.weather_code]||('Code '+wx.weather_code);
+  var temp=Math.round(wx.temperature_2m);
+  var pres=Math.round(wx.surface_pressure);
+  var vis=wx.visibility!=null?(wx.visibility>=16000?'10+ mi':(wx.visibility/1609.34).toFixed(1)+' mi'):'--';
+  var html='<div class="wx-cond-row">';
+  html+='<div class="wx-cond"><div class="wx-cond-val">'+temp+'°F</div><div class="wx-cond-lbl">Temp</div></div>';
+  html+='<div class="wx-cond"><div class="wx-cond-val">'+pres+'</div><div class="wx-cond-lbl">hPa</div></div>';
+  html+='<div class="wx-cond"><div class="wx-cond-val" style="font-size:13px;line-height:1.3">'+desc+'</div><div class="wx-cond-lbl">Sky</div></div>';
+  html+='<div class="wx-cond"><div class="wx-cond-val" style="font-size:15px">'+vis+'</div><div class="wx-cond-lbl">Vis</div></div>';
+  html+='</div>';
+  return html;
+}
+
+/* Swell height (ft) · period · direction */
+function wxMarineHTML(marine){
+  var wh=(marine.wave_height*3.281).toFixed(1);
+  var wp=marine.wave_period?Math.round(marine.wave_period)+'s':'--';
+  var wd=marine.wave_direction!=null?compass(marine.wave_direction):'--';
+  var html='<div class="wx-marine">';
+  html+='<div class="sec-lbl" style="margin-bottom:10px">Swell / Sea state</div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">';
+  html+='<div><div style="font-size:20px;font-weight:500;color:var(--color-text-primary)">'+wh+'</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;text-transform:uppercase;letter-spacing:.4px">Height ft</div></div>';
+  html+='<div><div style="font-size:20px;font-weight:500;color:var(--color-text-primary)">'+wp+'</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;text-transform:uppercase;letter-spacing:.4px">Period</div></div>';
+  html+='<div><div style="font-size:20px;font-weight:500;color:var(--color-text-primary)">'+wd+'</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;text-transform:uppercase;letter-spacing:.4px">Direction</div></div>';
+  html+='</div></div>';
+  return html;
+}
+
+/* Tide curve plus a "next high/low in …" strip */
+function wxTidesHTML(tides){
+  var html='<p class="sec-lbl">Tides · '+esc(tides.station)+'</p>';
+  html+='<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px 10px;margin-bottom:14px;overflow:hidden">';
+  html+=renderTideSVG(tides);
+  var tdNow=Date.now();
+  var tdPreds=tides.predictions;
+  var tdNext=tdPreds.length-1;
+  for(var i=0;i<tdPreds.length;i++){if(new Date(tdPreds[i].t.replace(' ','T')).getTime()>tdNow){tdNext=i;break;}}
+  var tn=tdPreds[tdNext];
+  var tnMs=new Date(tn.t.replace(' ','T')).getTime();
+  var tnTime=new Date(tn.t.replace(' ','T')).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  var tnMins=Math.round((tnMs-tdNow)/60000);
+  var tnStr=durStr(tnMins);
+  var tnH=tn.type==='H';
+  html+='<div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)">';
+  html+='<span style="font-size:18px;line-height:1;color:'+(tnH?'var(--t600)':'var(--b400)')+';">'+(tnH?'▲':'▼')+'</span>';
+  html+='<span style="font-size:13px;font-weight:600;color:var(--color-text-primary)">'+(tnH?'High':'Low')+' tide</span>';
+  html+='<span style="font-size:13px;color:var(--color-text-secondary)">'+parseFloat(tn.v).toFixed(1)+' ft &middot; '+tnTime+' &middot; in '+tnStr+'</span>';
+  html+='<span style="margin-left:auto;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:var(--t400);color:#fff;padding:2px 8px;border-radius:99px">Next</span>';
+  html+='</div>';
+  html+='</div>';
+  return html;
 }
 
 /* ── Overview conditions summary ────────────────── */
@@ -2505,6 +2523,14 @@ function distNm(a,b){
   var la1=a[0]*Math.PI/180, la2=b[0]*Math.PI/180;
   var s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)*Math.sin(dLon/2);
   return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+
+/* [east, north] offset of pt from origin in nm, on a flat-earth patch scaled at
+   latitude lat — plenty accurate over a race course, and far simpler than
+   great-circle maths for cross-track and start-line geometry. */
+function enNm(pt,origin,lat){
+  var cosLat=Math.cos(lat*Math.PI/180);
+  return [(pt[1]-origin[1])*cosLat*60,(pt[0]-origin[0])*60];
 }
 
 
@@ -3232,9 +3258,8 @@ function clearLine(){
    bearing to that closest point. Local flat-earth math is plenty at line scale. */
 function lineInfo(p){
   var a=lineState.pin,b=lineState.boat;
-  var cosLat=Math.cos(p[0]*Math.PI/180);
-  var ax=(a[1]-p[1])*cosLat*60, ay=(a[0]-p[0])*60;   /* nm east/north of p */
-  var bx=(b[1]-p[1])*cosLat*60, by=(b[0]-p[0])*60;
+  var A=enNm(a,p,p[0]), B=enNm(b,p,p[0]);           /* line ends, nm east/north of p */
+  var ax=A[0], ay=A[1], bx=B[0], by=B[1];
   var dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
   var t=L2>0?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/L2)):0;
   var cx=ax+t*dx, cy=ay+t*dy;
@@ -3280,8 +3305,7 @@ function startLineSVG(){
   /* Boat position in the line frame (nm): x along pin→RC, y = signed
      perpendicular (positive drawn downward — orientation-preserving, so
      rotations stay honest and an OCS boat shows on the other side). */
-  var cosLat=Math.cos(lat*Math.PI/180);
-  var ex=(lon-P[1])*cosLat*60, ey=(lat-P[0])*60;
+  var e=enNm([lat,lon],P,lat), ex=e[0], ey=e[1];
   var th=lineBrg*Math.PI/180, ux=Math.sin(th), uy=Math.cos(th);
   var along=ex*ux+ey*uy;
   var perp=ex*uy-ey*ux;
@@ -3357,13 +3381,13 @@ function lineStatusHTML(){
   return bits.join(' · ')||'<span style="color:var(--color-text-secondary)">Line set — waiting for wind/GPS</span>';
 }
 /* Keep the status line + approach view live as the boat moves */
-setInterval(function(){
+every(1,'start-line',function(){
   if(!lineState.pin||!lineState.boat) return;
   var el=document.getElementById('race-line-status');
-  if(el) el.innerHTML=lineStatusHTML();
+  if(el) patchHTML(el,lineStatusHTML());
   var sv=document.getElementById('race-line-svg');
-  if(sv) sv.innerHTML=startLineSVG();
-},1000);
+  if(sv) patchHTML(sv,startLineSVG());
+});
 
 function _syncBtn(sign,onclick,enabled){
   return '<button onclick="'+onclick+'" aria-label="sync '+(sign==='+'?'up':'down')+'"'+(enabled?'':' disabled')+' style="width:46px;height:46px;flex-shrink:0;border-radius:50%;border:1.5px solid '+(enabled?'var(--t400)':'var(--color-border-secondary)')+';background:'+(enabled?'var(--t50)':'none')+';color:'+(enabled?'var(--t600)':'var(--color-text-secondary)')+';font-size:24px;font-weight:600;line-height:1;cursor:'+(enabled?'pointer':'default')+';opacity:'+(enabled?'1':'0.4')+';font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">'+sign+'</button>';
@@ -3513,7 +3537,7 @@ function autoLegTick(){
       function(){_autoLeg.suppressKey=undoKey;raceAdvanceLeg(-1);});
   }
 }
-setInterval(autoLegTick,2000);
+every(2,'auto-leg',autoLegTick);
 
 var _toastTimer=null;
 function showRaceToast(msg,undoFn){
@@ -3610,37 +3634,45 @@ function renderRaceTab(){
   var el=document.getElementById('race-content');
   if(!el) return;
   renderRaceTimerPanel();
+  var w=raceWindState();
+  /* One fixed wrapper per section, so a section appearing or vanishing (the
+     perf strip, the current line) can't shift the others out of step while
+     patching — the next-mark buttons always line up with themselves. */
+  patchHTML(el,'<div>'+raceHeadingsHTML(w)+'</div><div>'+racePerfHTML(w)+'</div><div>'+raceNextHTML()+'</div>'
+    +'<div>'+raceWindHTML(w)+'</div><div>'+renderWindHistory()+'</div>');
+}
 
-  /* ── Wind state ── */
-  var tws=skState.windKts;          /* best wind speed (true preferred) */
-  var windDir=skState.windDir;
-  var cog=skState.cogDeg;
-  var hasWind=tws!=null&&windDir!=null;
-
+/* Wind figures every Race tab section reads, worked out once per render */
+function raceWindState(){
+  var w={tws:skState.windKts, windDir:skState.windDir, cog:skState.cogDeg}; /* best wind speed (true preferred) */
+  w.hasWind=w.tws!=null&&w.windDir!=null;
   /* True wind angle relative to COG */
-  var twaVal=null,twaSide=null;
-  if(windDir!=null&&cog!=null){
-    var raw=((windDir-cog)+360)%360;
-    twaVal=raw<=180?raw:360-raw;
-    twaSide=raw<=180?'Stbd':'Port';
+  w.twaVal=null;w.twaSide=null;
+  if(w.windDir!=null&&w.cog!=null){
+    var raw=((w.windDir-w.cog)+360)%360;
+    w.twaVal=raw<=180?raw:360-raw;
+    w.twaSide=raw<=180?'Stbd':'Port';
   }
   /* Apparent wind (raw from SK) for the compact grid */
-  var aws=skState._speedApp!=null?skState._speedApp*MS2KTS:null;
-  var awaMag=null,awaSide=null;
+  w.aws=skState._speedApp!=null?skState._speedApp*MS2KTS:null;
+  w.awaMag=null;w.awaSide=null;
   if(skState._angleApp!=null){
     var araw=((skState._angleApp*RAD2DEG+180)%360+360)%360-180; /* -180..180 */
-    awaMag=Math.abs(araw); awaSide=araw>=0?'Stbd':'Port';
+    w.awaMag=Math.abs(araw); w.awaSide=araw>=0?'Stbd':'Port';
   }
   /* Only surface TWS when we actually have true wind (not apparent-only) */
-  var twsVal=skState.windLabel==='AWS'?null:skState.windKts;
-
+  w.twsVal=skState.windLabel==='AWS'?null:skState.windKts;
   /* Point-of-sail featuring with a 95-105° neutral band to avoid flicker */
-  var feature='both';
-  if(twaVal!=null){ if(twaVal<95) feature='up'; else if(twaVal>105) feature='down'; }
+  w.feature='both';
+  if(w.twaVal!=null){ if(w.twaVal<95) w.feature='up'; else if(w.twaVal>105) w.feature='down'; }
+  return w;
+}
 
-  /* ── 1. Optimal headings from polar ── */
+/* 1. Optimal headings from the polar — the point of sail in use full-size */
+function raceHeadingsHTML(w){
+  var tws=w.tws, windDir=w.windDir, cog=w.cog, feature=w.feature;
   var optHtml='<p class="sec-lbl">Optimal headings</p>';
-  if(hasWind){
+  if(w.hasWind){
     var p=interpPolar(tws);
     var cogDiff=function(hdg){ return cog==null?null:Math.round(((hdg-cog+540)%360)-180); };
     var hdgCell=function(hdg,label){
@@ -3675,41 +3707,45 @@ function renderRaceTab(){
     optHtml+='<div class="card" style="margin-bottom:14px;color:var(--color-text-secondary);font-size:13px;text-align:center;padding:20px">'
       +'<i class="ti ti-wind" style="font-size:22px;display:block;margin-bottom:8px;opacity:.35"></i>Live wind data needed for polar headings</div>';
   }
+  return optHtml;
+}
 
-  /* ── 1b. Performance vs polar — live % of target boat speed ── */
-  var perfHtml='';
-  var perf=polarPerf(tws,twaVal);
-  if(perf){
-    var pClr=perf.pct>=97?'var(--t600)':perf.pct>=88?'var(--warn)':'var(--c400)';
-    perfHtml='<div class="polar-box" style="margin-bottom:10px;padding:9px 13px">';
-    perfHtml+='<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">';
-    perfHtml+='<span style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;color:var(--t600)">Polar performance</span>';
-    perfHtml+='<span style="font-size:12px;color:var(--t800)">'+perf.label+' '+perf.speed.toFixed(1)+' / target '+perf.target.toFixed(2)+' kts</span>';
-    perfHtml+='</div>';
-    perfHtml+='<div style="display:flex;align-items:center;gap:10px;margin-top:6px">';
-    perfHtml+='<span style="font-size:26px;font-weight:800;line-height:1;color:'+pClr+';font-variant-numeric:tabular-nums;min-width:74px">'+perf.pct+'%</span>';
-    /* bar spans 0–110%; the tick at 100% is the polar target */
-    perfHtml+='<div style="flex:1;position:relative;height:8px;border-radius:4px;background:var(--color-background-primary);border:0.5px solid var(--t100)">';
-    perfHtml+='<div style="height:100%;border-radius:4px;background:'+pClr+';width:'+Math.min(100,perf.pct/110*100)+'%"></div>';
-    perfHtml+='<div style="position:absolute;top:-3px;bottom:-3px;left:'+(100/110*100).toFixed(1)+'%;width:2px;background:var(--t800);opacity:.55"></div>';
-    perfHtml+='</div></div></div>';
-  }
+/* 1b. Performance vs polar — live % of target boat speed */
+function racePerfHTML(w){
+  var perf=polarPerf(w.tws,w.twaVal);
+  if(!perf) return '';
+  var pClr=perf.pct>=97?'var(--t600)':perf.pct>=88?'var(--warn)':'var(--c400)';
+  var perfHtml='<div class="polar-box" style="margin-bottom:10px;padding:9px 13px">';
+  perfHtml+='<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">';
+  perfHtml+='<span style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;color:var(--t600)">Polar performance</span>';
+  perfHtml+='<span style="font-size:12px;color:var(--t800)">'+perf.label+' '+perf.speed.toFixed(1)+' / target '+perf.target.toFixed(2)+' kts</span>';
+  perfHtml+='</div>';
+  perfHtml+='<div style="display:flex;align-items:center;gap:10px;margin-top:6px">';
+  perfHtml+='<span style="font-size:26px;font-weight:800;line-height:1;color:'+pClr+';font-variant-numeric:tabular-nums;min-width:74px">'+perf.pct+'%</span>';
+  /* bar spans 0–110%; the tick at 100% is the polar target */
+  perfHtml+='<div style="flex:1;position:relative;height:8px;border-radius:4px;background:var(--color-background-primary);border:0.5px solid var(--t100)">';
+  perfHtml+='<div style="height:100%;border-radius:4px;background:'+pClr+';width:'+Math.min(100,perf.pct/110*100)+'%"></div>';
+  perfHtml+='<div style="position:absolute;top:-3px;bottom:-3px;left:'+(100/110*100).toFixed(1)+'%;width:2px;background:var(--t800);opacity:.55"></div>';
+  perfHtml+='</div></div></div>';
+  return perfHtml;
+}
 
-  /* ── 2. Next mark (compact) — shared with the Courses tab ── */
-  var nextHtml='';
-  if(!getRaceVariant()){
-    nextHtml+='<div class="card" style="cursor:pointer;margin-bottom:10px" onclick="showTab(\'npsa\')">';
-    nextHtml+='<div style="display:flex;align-items:center;gap:10px">';
-    nextHtml+='<i class="ti ti-map" style="font-size:20px;color:var(--b400);flex-shrink:0" aria-hidden="true"></i>';
-    nextHtml+='<div><div class="card-title">No course selected</div><div class="card-sub">Select a course in the Courses tab first</div></div>';
-    nextHtml+='<i class="ti ti-chevron-right" style="margin-left:auto;color:var(--color-text-secondary);font-size:18px" aria-hidden="true"></i>';
-    nextHtml+='</div></div>';
-  } else {
-    nextHtml=nextMarkCardHTML();
-  }
+/* 2. Next mark (compact) — shared with the Courses tab */
+function raceNextHTML(){
+  if(getRaceVariant()) return nextMarkCardHTML();
+  var h='<div class="card" style="cursor:pointer;margin-bottom:10px" onclick="showTab(\'npsa\')">';
+  h+='<div style="display:flex;align-items:center;gap:10px">';
+  h+='<i class="ti ti-map" style="font-size:20px;color:var(--b400);flex-shrink:0" aria-hidden="true"></i>';
+  h+='<div><div class="card-title">No course selected</div><div class="card-sub">Select a course in the Courses tab first</div></div>';
+  h+='<i class="ti ti-chevron-right" style="margin-left:auto;color:var(--color-text-secondary);font-size:18px" aria-hidden="true"></i>';
+  h+='</div></div>';
+  return h;
+}
 
-  /* ── 3. Wind (compact grid) ── */
-  var boldApp=feature==='up', boldTrue=feature==='down';
+/* 3. Wind grid (SOG/AWS/TWS · COG/AWA/TWA) plus the current strip */
+function raceWindHTML(w){
+  var cog=w.cog;
+  var boldApp=w.feature==='up', boldTrue=w.feature==='down';
   var wcell=function(big,sub,lbl,bold,subClr){
     return '<div class="wcell'+(bold?' wbold':'')+'"><div class="wval">'+big+'</div>'
       +'<div class="wsub"'+(subClr?' style="color:'+subClr+'"':'')+'>'+(sub||'&nbsp;')+'</div>'
@@ -3718,11 +3754,11 @@ function renderRaceTab(){
   var sideClrOf=function(sd){ return sd==='Stbd'?'var(--t600)':'var(--c400)'; };
   var windHtml='<p class="sec-lbl">Wind</p><div class="wind-grid">';
   windHtml+=wcell(skState.sogKts!=null?skState.sogKts.toFixed(1):'--','kts','SOG',false);
-  windHtml+=wcell(aws!=null?aws.toFixed(1):'--','kts','AWS',boldApp);
-  windHtml+=wcell(twsVal!=null?twsVal.toFixed(1):'--','kts','TWS',boldTrue);
+  windHtml+=wcell(w.aws!=null?w.aws.toFixed(1):'--','kts','AWS',boldApp);
+  windHtml+=wcell(w.twsVal!=null?w.twsVal.toFixed(1):'--','kts','TWS',boldTrue);
   windHtml+=wcell(cog!=null?Math.round(cog)+'°':'--',cog!=null?compass(cog):'','COG',false);
-  windHtml+=wcell(awaMag!=null?Math.round(awaMag)+'°':'--',awaSide||'','AWA',boldApp,awaSide?sideClrOf(awaSide):null);
-  windHtml+=wcell(twaVal!=null?Math.round(twaVal)+'°':'--',twaSide||'','TWA',boldTrue,twaSide?sideClrOf(twaSide):null);
+  windHtml+=wcell(w.awaMag!=null?Math.round(w.awaMag)+'°':'--',w.awaSide||'','AWA',boldApp,w.awaSide?sideClrOf(w.awaSide):null);
+  windHtml+=wcell(w.twaVal!=null?Math.round(w.twaVal)+'°':'--',w.twaSide||'','TWA',boldTrue,w.twaSide?sideClrOf(w.twaSide):null);
   windHtml+='</div>';
   /* current set & drift strip — only when a solid estimate exists */
   var cur=currentEstimate();
@@ -3732,15 +3768,7 @@ function renderRaceTab(){
     windHtml+='<span><span style="color:var(--color-text-secondary)">Current</span> <strong>'+cur.driftKts.toFixed(1)+' kts</strong> setting '+compass(cur.setDeg)+' ('+Math.round(cur.setDeg)+'°)</span>';
     windHtml+='</div>';
   }
-
-  /* ── 4. Wind history ── */
-  var histHtml=renderWindHistory();
-
-  /* One fixed wrapper per section, so a section appearing or vanishing (the
-     perf strip, the current line) can't shift the others out of step while
-     patching — the next-mark buttons always line up with themselves. */
-  patchHTML(el,'<div>'+optHtml+'</div><div>'+perfHtml+'</div><div>'+nextHtml+'</div>'
-    +'<div>'+windHtml+'</div><div>'+histHtml+'</div>');
+  return windHtml;
 }
 
 /* ── Current arrow on the chart — patched in place like the wind label ── */
@@ -3930,7 +3958,7 @@ function refreshEinkUI(){
   }
 }
 
-if(EINK_MODE) setInterval(refreshEinkUI,2000);
+if(EINK_MODE) every(2,'eink',refreshEinkUI);
 
 /* ── Send next mark data to SignalK ──
    Publish as a delta over the open WebSocket. SignalK merges client deltas
@@ -3986,9 +4014,8 @@ function skRestBase(){
    prev→next track, per the SK schema ("negative … to the left of this line").
    Flat-earth east/north frame, as lineInfo() uses for the start line. */
 function xteMeters(p,a,b){
-  var cosLat=Math.cos(p[0]*Math.PI/180);
-  var vx=(p[1]-a[1])*cosLat*60, vy=(p[0]-a[0])*60;   /* vessel offset from origin, nm */
-  var tx=(b[1]-a[1])*cosLat*60, ty=(b[0]-a[0])*60;   /* track vector, nm */
+  var v=enNm(p,a,p[0]), t=enNm(b,a,p[0]);         /* vessel offset, track vector — nm */
+  var vx=v[0], vy=v[1], tx=t[0], ty=t[1];
   var L=Math.sqrt(tx*tx+ty*ty);
   if(L<1e-9) return 0;
   return (vx*(ty/L)-vy*(tx/L))*1852;
@@ -4164,8 +4191,8 @@ function sendCurrentToSK(){
     value:{setTrue:cur.setDeg*Math.PI/180,drift:cur.driftKts/MS2KTS}}]);
 }
 
-setInterval(syncCourseToSK,2000);
-setInterval(sendCurrentToSK,5000);
+every(2,'course-sync',syncCourseToSK);
+every(5,'current-pub',sendCurrentToSK);
 </script>
 </body>
 </html>
