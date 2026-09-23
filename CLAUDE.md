@@ -75,10 +75,21 @@ Regenerate from a full Tabler build (`pip install fonttools brotli`):
 
 ## Testing a change (headless, cheap)
 
-Chromium + Playwright are preinstalled. Drive the real UI and assert on state
-rather than screenshotting when a scalar check will do (screenshots are image
-tokens). Load `file://` on `index.html` directly — no server needed for the
-UI; only Signal K / weather / map tiles need the network.
+Run the suite before and after any change: **`node tests/run.js`** (about a
+minute; exits non-zero on failure). One file: `node tests/course-api.test.js`.
+
+- `tests/harness.js` — `run(name, async ({open, check}) => …)`; `open(init?)`
+  loads `index.html` over `file://` in headless Chromium, `check(label, ok,
+  detail)` records a pass/fail, and any page error fails the suite.
+  `stubSignalK` fakes the socket and REST so course sync runs with no server.
+- `*.test.js` — course API, course selection, wake lock, wind/current/laylines.
+- `test_serve.py` — `serve.py`'s real handler over plain HTTP (no cert needed).
+
+Add a check whenever you fix a bug, and put tests here, not in a scratchpad
+(scratchpads are deleted with the session; the first set of tests was lost
+that way). Drive the real UI and assert on state rather than screenshotting
+when a scalar check will do (screenshots are image tokens). Only Signal K /
+weather / map tiles need the network, and the tests stub all three.
 
 ## Deploy
 
