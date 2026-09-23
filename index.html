@@ -473,7 +473,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.6</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.7</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -3550,6 +3550,9 @@ function nextMarkCardHTML(){
   var markPos=getActiveMarks()[markId];
   var cog=skState.cogDeg;
   var mkColor=rounding===null?'var(--b800)':rounding==='P'?'var(--port-fg)':'var(--stbd-fg)';
+  /* The small rounding label needs the darker ink — the -fg shade is only
+     legible at the mark name's size (large text) */
+  var mkInk=rounding===null?'var(--b800)':rounding==='P'?'var(--port-ink)':'var(--stbd-ink)';
   var mkBg=rounding===null?'var(--b50)':rounding==='P'?'var(--port-bg)':'var(--stbd-bg)';
   var mkBorder=rounding===null?'var(--b100)':rounding==='P'?'var(--port-bd)':'var(--stbd-bd)';
   var mkTxt=rounding===null?'Start / Finish':rounding==='P'?'Round to Port':'Round to Starboard';
@@ -3579,7 +3582,7 @@ function nextMarkCardHTML(){
   var brg=(posLat!=null&&markPos)?bearingDeg([posLat,posLon],markPos):null;
   h+='<div style="background:'+mkBg+';border:1px solid '+mkBorder+';border-radius:var(--border-radius-md);padding:11px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px">';
   h+='<div><div style="font-size:20px;font-weight:700;color:'+mkColor+'">'+markName+'</div>';
-  h+='<div style="font-size:12px;font-weight:600;color:'+mkColor+';margin-top:2px;text-transform:uppercase;letter-spacing:.5px">'+mkTxt+'</div></div>';
+  h+='<div style="font-size:12px;font-weight:600;color:'+mkInk+';margin-top:2px;text-transform:uppercase;letter-spacing:.5px">'+mkTxt+'</div></div>';
   h+='<div style="text-align:right"><div style="font-size:30px;font-weight:700;color:'+mkColor+';line-height:1;white-space:nowrap">'+(brg!=null?compass(brg)+' '+Math.round(brg)+'°':'--')+'</div>';
   h+='<div style="font-size:11px;font-weight:600;color:'+mkColor+';opacity:.85;text-transform:uppercase;letter-spacing:.5px;margin-top:2px">Bearing</div></div>';
   h+='</div>';

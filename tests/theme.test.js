@@ -53,6 +53,26 @@ run('theme', async ({ open, check }) => {
   check('next-mark box is tinted for dark mode', card.bg === 'rgb(58, 20, 20)' || card.bg === 'rgb(15, 42, 25)', card.bg);
   check('laylines keep chart colours in dark mode', card.laylines.join() === '#16a34a,#dc2626', card.laylines);
 
+  // The small rounding label in the next-mark box is readable (≥ 4.5:1) in both themes.
+  const label = await page.evaluate(() => {
+    const lum = rgb => { const c = rgb.match(/\d+/g).slice(0, 3).map(v => { v /= 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const out = {};
+    for (const theme of ['light', 'dark']) {
+      setTheme(theme); renderRaceTab();
+      const box = document.querySelector('#race-content [style*="-bg)"]');
+      const lbl = box && box.querySelector('[style*="text-transform:uppercase"]');
+      out[theme] = lbl && { text: lbl.textContent,
+        ratio: Math.round(ratio(getComputedStyle(lbl).color, getComputedStyle(box).backgroundColor) * 10) / 10 };
+    }
+    setTheme('light');
+    return out;
+  });
+  check('rounding label ≥ 4.5:1 in light mode', label.light && label.light.ratio >= 4.5, label.light);
+  check('rounding label ≥ 4.5:1 in dark mode', label.dark && label.dark.ratio >= 4.5, label.dark);
+
   // Weather card with and without a gust figure.
   const gust = await page.evaluate(() => {
     const wx = g => ({ wind_speed_10m: 12, wind_direction_10m: 200, wind_gusts_10m: g, temperature_2m: 72,
