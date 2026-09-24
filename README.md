@@ -82,6 +82,14 @@ Includes a `ws` / `wss` toggle for plain or TLS connections, reconnect logic wit
   and the app keeps publishing to Signal K instead of being frozen by a
   backgrounded tab. Released as soon as you leave the tab, so it doesn't burn
   battery elsewhere
+- **Track recording + GPX export** — tap *Record track* on the Race tab (or
+  Dashboard) and the boat's track is logged every 2 s with SOG, COG, heading,
+  STW and true wind, and the course marks as waypoints. Tracks are stored on
+  the device and survive a reload; a recording in progress resumes. *Export*
+  opens the share sheet — on iPhone/iPad choose **Save to Files** and an
+  iCloud Drive folder, and the GPX syncs to your other devices (iOS remembers
+  the folder). The app records only while it's open, so recording keeps the
+  screen awake
 - **Wind history** — lull / avg / gust over the last 10 minutes
 - **Wind shift analysis** — detects oscillating or trending conditions from the last 30 minutes of SK data, estimates amplitude, cycle period, current lift/header status, and time to next shift
 

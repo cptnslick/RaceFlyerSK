@@ -7,7 +7,7 @@ run('jobs', async ({ open, check }) => {
 
   const list = await page.evaluate(() => _jobs.map(j => j.name + '/' + j.sec).sort().join(' '));
   check('registered jobs and periods',
-    list === 'auto-leg/2 course-sync/2 current-pub/5 sk-stale/5 start-line/1', list);
+    list === 'auto-leg/2 course-sync/2 current-pub/5 sk-stale/5 start-line/1 track-save/15 track-ui/1 track/2', list);
 
   // Which jobs fire on which tick.
   const due = await page.evaluate(() => {
@@ -18,10 +18,10 @@ run('jobs', async ({ open, check }) => {
     _jobs.forEach((j, i) => { j.fn = saved[i]; });
     return r;
   });
-  check('tick 1: only 1 s jobs', due.t1 === 'start-line', due.t1);
-  check('tick 2: 1 s and 2 s jobs', due.t2 === 'auto-leg course-sync start-line', due.t2);
-  check('tick 5: 1 s and 5 s jobs', due.t5 === 'current-pub sk-stale start-line', due.t5);
-  check('tick 10: everything', due.t10 === 'auto-leg course-sync current-pub sk-stale start-line', due.t10);
+  check('tick 1: only 1 s jobs', due.t1 === 'start-line track-ui', due.t1);
+  check('tick 2: 1 s and 2 s jobs', due.t2 === 'auto-leg course-sync start-line track track-ui', due.t2);
+  check('tick 5: 1 s and 5 s jobs', due.t5 === 'current-pub sk-stale start-line track-ui', due.t5);
+  check('tick 10: everything', due.t10 === 'auto-leg course-sync current-pub sk-stale start-line track track-ui', due.t10);
 
   // A job that throws is logged and doesn't stop the ones after it.
   const iso = await page.evaluate(() => {

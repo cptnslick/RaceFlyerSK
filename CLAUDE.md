@@ -60,6 +60,7 @@ Regenerate from a full Tabler build (`pip install fonttools brotli`):
 | Course data | `var MARKS`, `var COURSES`, `NPSA_S3_COURSES`, `RCRA_COURSES` |
 | Course map render | `function selectCourse` |
 | Race tab | `function renderRaceTab` → `raceWindState`, `raceHeadingsHTML`, `racePerfHTML`, `raceWindHTML`; `nextMarkCardHTML` |
+| Track recording / GPX | `/* ── Track recording`, `var trk`, `trackTick`, `trackGPX`, `exportTrack` |
 | Periodic jobs (1 s tick) | `/* ── Periodic jobs`, `every(sec, name, fn)` |
 | Flat-earth geometry | `function enNm` (with `bearingDeg`, `distNm`, `destPoint`) |
 | Start timer | `var SEQUENCES`, `var timerState`, `renderRaceTimerPanel` |
@@ -93,7 +94,7 @@ minute; exits non-zero on failure). One file: `node tests/course-api.test.js`.
   loads `index.html` over `file://` in headless Chromium, `check(label, ok,
   detail)` records a pass/fail, and any page error fails the suite.
   `stubSignalK` fakes the socket and REST so course sync runs with no server.
-- `*.test.js` — course API, course selection, periodic jobs, live rendering, theme colours, wake lock,
+- `*.test.js` — course API, course selection, periodic jobs, live rendering, theme colours, tracks, wake lock,
   wind/current/laylines.
 - `test_serve.py` — `serve.py`'s real handler over plain HTTP (no cert needed).
 

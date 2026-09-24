@@ -472,8 +472,10 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
     </div>
     <p class="sec-lbl">Live sensors</p>
     <div class="card" id="sk-card"></div>
+    <p class="sec-lbl">Tracks</p>
+    <div id="dash-tracks"></div>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px">
-      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.15.8</span>
+      <span id="app-version" style="font-size:11px;color:var(--color-text-secondary);opacity:.45;letter-spacing:.3px">v1.16.0</span>
       <button id="update-btn" onclick="checkForUpdate()" style="font-size:11px;padding:2px 8px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-sans);-webkit-tap-highlight-color:transparent">Check for update</button>
     </div>
   </div>
@@ -601,6 +603,7 @@ body.eink-mode #eink-panel{display:grid;grid-template-columns:1fr 1fr;grid-templ
   <!-- RACE -->
   <div id="tab-race" class="screen">
     <div id="race-timer-panel"></div>
+    <div id="race-track" style="margin-bottom:12px"></div>
     <div id="race-content"></div>
   </div>
 
@@ -973,7 +976,7 @@ var skState={
 var SK_STALE_MS=30000;
 
 /* ── Phone/tablet GPS fallback (used when SK has no position) ── */
-var phoneGPS={lat:null,lon:null,watcher:null,accuracy:null,denied:false};
+var phoneGPS={lat:null,lon:null,watcher:null,accuracy:null,denied:false,ts:null};
 
 function startPhoneGPS(){
   if(phoneGPS.watcher!=null||phoneGPS.denied||!navigator.geolocation) return;
@@ -982,6 +985,7 @@ function startPhoneGPS(){
       phoneGPS.lat=pos.coords.latitude;
       phoneGPS.lon=pos.coords.longitude;
       phoneGPS.accuracy=pos.coords.accuracy;
+      phoneGPS.ts=Date.now();
       /* Auto-fire weather once if SK has no position and weather not yet loaded */
       if(skState.lat==null&&!skState.weatherFiredOnce&&!wxState.loaded&&!wxState.loading){
         skState.weatherFiredOnce=true;
@@ -1023,6 +1027,7 @@ function wakeLockWanted(){
   /* A running start sequence needs the screen whatever tab is up — throttled
      timers skip the horns. (window. guard: timerState is declared later.) */
   if(window.timerState&&timerState.running) return true;
+  if(window.trk&&trk.rec) return true;   /* a web app only records while the screen is on */
   var el=document.getElementById('tab-race');
   return !!el&&el.classList.contains('active');
 }
@@ -3883,6 +3888,229 @@ function checkForUpdate(){
       setTimeout(function(){btn.textContent='Check for update';btn.disabled=false;},2500);
     });
 }
+
+/* ── Track recording + GPX export ──────────────────────────────
+   Records the boat's position (plus speed, heading and wind) every 2 s
+   while switched on, into IndexedDB so a reload mid-race loses nothing —
+   a recording in progress picks up again after a reload. Web apps can only
+   run while open, so recording holds the screen awake (wakeLockWanted).
+   Export goes through the share sheet — on iOS "Save to Files" → an iCloud
+   folder, which syncs to the laptop; iOS remembers the folder. Where
+   sharing files isn't supported it falls back to a plain download. */
+var TRACK_TICK_S=2, TRACK_SAVE_S=15;
+var TRACK_FIX_MAX_MS=10000;   /* older than this, the position isn't current — don't record it */
+var TRACK_GAP_MS=60000;       /* longer gaps start a new GPX segment instead of a straight line */
+var trk={rec:false,cur:null,list:[],idb:true};
+var _trackDB=null;
+
+function trackDB(){
+  return new Promise(function(res,rej){
+    if(_trackDB) return res(_trackDB);
+    if(!window.indexedDB) return rej(new Error('no idb'));
+    var rq=indexedDB.open('flyer-tracks',1);
+    rq.onupgradeneeded=function(){rq.result.createObjectStore('tracks',{keyPath:'id'});};
+    rq.onsuccess=function(){_trackDB=rq.result;res(_trackDB);};
+    rq.onerror=function(){rej(rq.error);};
+  });
+}
+function trackPut(t){
+  return trackDB().then(function(db){
+    return new Promise(function(res,rej){
+      var tx=db.transaction('tracks','readwrite');
+      tx.objectStore('tracks').put(t);
+      tx.oncomplete=function(){res();};tx.onerror=function(){rej(tx.error);};
+    });
+  }).catch(function(){trk.idb=false;renderTrackUI();});
+}
+function trackDelete(id){
+  return trackDB().then(function(db){db.transaction('tracks','readwrite').objectStore('tracks').delete(id);}).catch(function(){});
+}
+function trackLoadAll(){
+  return trackDB().then(function(db){
+    return new Promise(function(res){
+      var rq=db.transaction('tracks').objectStore('tracks').getAll();
+      rq.onsuccess=function(){res(rq.result||[]);};
+      rq.onerror=function(){res([]);};
+    });
+  });
+}
+
+/* A current position, Signal K first — or null if nothing fresh */
+function trackFix(){
+  var now=Date.now();
+  if(skState.lat!=null&&skState._ts.pos&&now-skState._ts.pos<TRACK_FIX_MAX_MS) return {lat:skState.lat,lon:skState.lon,src:'sk'};
+  if(phoneGPS.lat!=null&&phoneGPS.ts&&now-phoneGPS.ts<TRACK_FIX_MAX_MS) return {lat:phoneGPS.lat,lon:phoneGPS.lon,src:'phone'};
+  return null;
+}
+function _r(v,dp){if(v==null) return null;var k=Math.pow(10,dp);return Math.round(v*k)/k;}
+
+/* Points are compact arrays: [time ms, lat, lon, SOG kts, COG °T, heading °T,
+   STW kts, TWS kts, TWD °T]. Nulls where a sensor isn't reporting. */
+function trackTick(){
+  if(!trk.rec||!trk.cur) return;
+  var f=trackFix();
+  if(!f) return;
+  var pts=trk.cur.pts, last=pts[pts.length-1], now=Date.now();
+  /* Sitting still — keep a point every 30 s, not every 2 */
+  if(last&&distNm([last[1],last[2]],[f.lat,f.lon])*1852<2&&now-last[0]<30000) return;
+  var tw=skState.windLabel!=='AWS';
+  pts.push([now,_r(f.lat,6),_r(f.lon,6),_r(skState.sogKts,1),_r(skState.cogDeg,0),_r(skHeading(),0),
+    _r(skState.stwKts,1),tw?_r(skState.windKts,1):null,tw?_r(skState.windDir,0):null]);
+  if(last) trk.cur.nm+=distNm([last[1],last[2]],[f.lat,f.lon]);
+}
+
+function startTrack(){
+  if(trk.rec) return;
+  var now=new Date(), v=getRaceVariant(), marks=[];
+  if(v){
+    var pos=getActiveMarks(), names=getActiveMarkNames(), seen={};
+    v.marks.forEach(function(m){ if(seen[m]||!pos[m]) return; seen[m]=1; marks.push([names[m]||m,pos[m][0],pos[m][1]]); });
+  }
+  var pad=function(n){return (n<10?'0':'')+n;};
+  var stamp=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+' '+pad(now.getHours())+pad(now.getMinutes());
+  trk.cur={id:'t'+now.getTime(),start:now.getTime(),end:null,nm:0,
+    name:'RaceFlyer '+stamp+(v?' Course '+raceState.courseId:''),marks:marks,pts:[]};
+  trk.list.push(trk.cur);
+  trk.rec=true;
+  lsSet('track_rec',trk.cur.id);
+  trackTick();
+  trackPut(trk.cur);
+  syncWakeLock();
+  renderTrackUI();
+}
+function stopTrack(){
+  if(!trk.rec) return;
+  var t=trk.cur;
+  trk.rec=false;trk.cur=null;
+  lsDel('track_rec');
+  t.end=t.pts.length?t.pts[t.pts.length-1][0]:Date.now();
+  if(!t.pts.length){   /* nothing recorded — don't leave an empty track behind */
+    trk.list=trk.list.filter(function(x){return x!==t;});
+    trackDelete(t.id);
+  } else trackPut(t);
+  syncWakeLock();
+  renderTrackUI();
+}
+function deleteTrack(id){
+  var t=trk.list.filter(function(x){return x.id===id;})[0];
+  if(!t||t===trk.cur) return;
+  if(!confirm('Delete track "'+t.name+'"?')) return;
+  trk.list=trk.list.filter(function(x){return x!==t;});
+  trackDelete(id);
+  renderTrackUI();
+}
+
+/* GPX 1.1: course marks as waypoints, the track split into segments at
+   gaps. Speed, heading and wind ride along in an extension namespace —
+   GPX tools that don't know it simply ignore it. */
+function trackGPX(t){
+  var iso=function(ms){return new Date(ms).toISOString().replace(/\.\d{3}Z$/,'Z');};
+  var x='<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<gpx version="1.1" creator="RaceFlyer SK" xmlns="http://www.topografix.com/GPX/1/1"'
+    +' xmlns:rf="https://github.com/cptnslick/RaceFlyerSK/gpx/1">\n'
+    +'<!-- rf: extensions — speeds in knots, angles in degrees true -->\n'
+    +'<metadata><name>'+esc(t.name)+'</name><time>'+iso(t.start)+'</time></metadata>\n';
+  t.marks.forEach(function(m){
+    x+='<wpt lat="'+m[1]+'" lon="'+m[2]+'"><name>'+esc(m[0])+'</name></wpt>\n';
+  });
+  x+='<trk><name>'+esc(t.name)+'</name>\n<trkseg>\n';
+  var keys=[null,null,null,'sog','cog','hdg','stw','tws','twd'];
+  t.pts.forEach(function(p,i){
+    if(i&&p[0]-t.pts[i-1][0]>TRACK_GAP_MS) x+='</trkseg>\n<trkseg>\n';
+    var ext='';
+    for(var k=3;k<keys.length;k++) if(p[k]!=null) ext+='<rf:'+keys[k]+'>'+p[k]+'</rf:'+keys[k]+'>';
+    x+='<trkpt lat="'+p[1]+'" lon="'+p[2]+'"><time>'+iso(p[0])+'</time>'
+      +(ext?'<extensions>'+ext+'</extensions>':'')+'</trkpt>\n';
+  });
+  return x+'</trkseg>\n</trk>\n</gpx>\n';
+}
+
+function exportTrack(id){
+  var t=trk.list.filter(function(x){return x.id===id;})[0];
+  if(!t) return;
+  var name=t.name.replace(/[\/\\:*?"<>|]/g,'-')+'.gpx', gpx=trackGPX(t), file=null;
+  try{file=new File([gpx],name,{type:'application/gpx+xml'});}catch(e){}
+  /* Share synchronously from the tap — the track is already in memory — so
+     iOS still counts it as a user gesture */
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:t.name}).catch(function(e){
+      if(!e||e.name!=='AbortError') downloadText(gpx,name);   /* cancelled is fine; anything else, download */
+    });
+    return;
+  }
+  downloadText(gpx,name);
+}
+function downloadText(text,name){
+  var url=URL.createObjectURL(new Blob([text],{type:'application/gpx+xml'}));
+  var a=document.createElement('a');
+  a.href=url;a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},10000);
+}
+
+function _clock(ms){
+  var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;
+  return h+':'+(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+}
+var _trkBtn='border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:none;color:var(--color-text-primary);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font-sans);min-height:36px;padding:6px 12px;-webkit-tap-highlight-color:transparent';
+
+/* Record / REC · time · distance · Stop — shared by the Race tab and Dashboard */
+function trackControlHTML(){
+  if(!trk.rec){
+    return '<button class="trk-start" onclick="startTrack()" style="'+_trkBtn+';width:100%;min-height:42px">'
+      +'<span style="color:var(--port)">●</span> Record track</button>';
+  }
+  var t=trk.cur, fix=trackFix();
+  var h='<div style="display:flex;align-items:center;gap:10px">';
+  h+='<span style="color:var(--port);font-weight:700;font-size:13px;letter-spacing:.5px">● REC</span>';
+  h+='<span style="font-size:13px;color:var(--color-text-primary);font-variant-numeric:tabular-nums">'+_clock(Date.now()-t.start)+' &middot; '+t.nm.toFixed(2)+' nm</span>';
+  if(!fix) h+='<span style="font-size:12px;color:var(--warn);font-weight:600">no GPS</span>';
+  h+='<button class="trk-stop" onclick="stopTrack()" style="'+_trkBtn+';margin-left:auto">Stop</button>';
+  return h+'</div>';
+}
+
+function trackListHTML(){
+  var h='<div class="card">'+trackControlHTML();
+  if(!trk.idb) h+='<div style="font-size:12px;color:var(--warn);margin-top:8px">This browser won\'t store tracks — export before closing the app.</div>';
+  var list=trk.list.slice().sort(function(a,b){return b.start-a.start;});
+  list.forEach(function(t){
+    var live=t===trk.cur, dur=(live?Date.now():t.end)-t.start;
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)">';
+    h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.name.replace(/^RaceFlyer /,''))+'</div>';
+    h+='<div style="font-size:12px;color:var(--color-text-secondary)">'+(live?'Recording &middot; ':'')+durStr(Math.round(dur/60000))+' &middot; '+t.nm.toFixed(1)+' nm &middot; '+t.pts.length.toLocaleString('en-US')+(t.pts.length===1?' pt':' pts')+'</div></div>';
+    h+='<button onclick="exportTrack(\''+t.id+'\')" style="'+_trkBtn+'">Export</button>';
+    if(!live) h+='<button onclick="deleteTrack(\''+t.id+'\')" aria-label="Delete track" style="'+_trkBtn+';color:var(--color-text-secondary)">Delete</button>';
+    h+='</div>';
+  });
+  if(list.length) h+='<div style="font-size:11px;color:var(--color-text-secondary);margin-top:10px;line-height:1.5">Export opens the share sheet — choose <strong>Save to Files</strong> and your iCloud folder; iOS remembers it next time.</div>';
+  return h+'</div>';
+}
+
+function renderTrackUI(){
+  var r=document.getElementById('race-track'), d=document.getElementById('dash-tracks');
+  if(r) patchHTML(r,trackControlHTML());
+  if(d) patchHTML(d,trackListHTML());
+}
+
+every(TRACK_TICK_S,'track',trackTick);
+every(1,'track-ui',function(){ if(trk.rec) renderTrackUI(); });
+every(TRACK_SAVE_S,'track-save',function(){ if(trk.rec) trackPut(trk.cur); });
+/* Save on the way out — iOS may not come back to finish the 15 s cycle */
+window.addEventListener('pagehide',function(){ if(trk.rec) trackPut(trk.cur); });
+document.addEventListener('visibilitychange',function(){ if(document.hidden&&trk.rec) trackPut(trk.cur); });
+
+/* Load saved tracks; a recording that was running before a reload carries on */
+trackLoadAll().then(function(saved){
+  var ids={};saved.forEach(function(t){ids[t.id]=1;});
+  trk.list=saved.concat(trk.list.filter(function(t){return !ids[t.id];}));
+  var resume=lsGet('track_rec');
+  if(resume&&!trk.rec){
+    var t=trk.list.filter(function(x){return x.id===resume;})[0];
+    if(t){trk.cur=t;t.end=null;trk.rec=true;syncWakeLock();}
+    else lsDel('track_rec');
+  }
+  renderTrackUI();
+}).catch(function(){trk.idb=false;renderTrackUI();});
 
 /* ── Eink/kiosk display mode ── */
 var EINK_MODE=new URLSearchParams(location.search).get('eink')==='1';
